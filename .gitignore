@@ -1,0 +1,17 @@
+node_modules/
+server/node_modules/
+.expo/
+dist/
+*.env
+.env.local
+server/.env
+expo-env.d.ts
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+.DS_Store
+*.tsbuildinfo
