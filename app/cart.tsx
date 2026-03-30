@@ -25,7 +25,7 @@ import { useBranch } from '@/context/BranchContext';
 import { useCart, type CartItem } from '@/context/CartContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { saveOrder, checkItems, getPromotions } from '@/services/api';
+import { saveOrder, calculateTotal, getPromotions } from '@/services/api';
 import { useOrder } from '@/context/OrderContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -152,7 +152,7 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-  const { cart, updateQty, removeItem, clearCart, subtotal } = useCart();
+  const { cart, updateQty, removeItem, clearCart, subtotal, subtotalRupiah } = useCart();
   const { taxRate, serviceRate, branch: branchData, currentBranchCode } = useBranch();
   const { addActiveOrder } = useOrder();
 
@@ -264,27 +264,88 @@ export default function CartScreen() {
       let queueNum = '';
 
       if (CONFIG.REAL_ORDERS_ENABLED) {
-        // REAL MODE: Submit to ESB
-        const visitPurposeID = orderMode === 'dineIn' ? '65' : orderMode === 'delivery' ? '64' : '63';
-        const orderPayload = {
-          orderType: orderMode,
+        // REAL MODE: Submit to ESB (schema from Nando @ ESB)
+        const visitPurposeMap: Record<string, string> = { dineIn: '65', takeAway: '63', delivery: '64' };
+        const visitPurposeID = visitPurposeMap[orderMode] || '63';
+        const phoneFormatted = (user?.phone || '').replace(/^\+/, '');
+        const now = Date.now();
+
+        const salesMenus = cart.map((item, idx) => ({
+          ID: now + idx,
+          menuID: item.menuID,
+          qty: item.qty,
+          extras: item.selectedExtras.map(e => ({ menuExtraID: e.id, qty: 1 })),
+          packages: [],
+          notes: item.notes || '',
+          promotionDetailID: 0,
+          promotionVoucherCode: null,
+          rewardType: 'voucher',
+        }));
+
+        // Step 1: Call calculate-total to get ESB-verified amount
+        const calcPayload = {
           visitPurposeID,
-          encryptedVisitPurpose: visitPurposeID, // Confirmed by Nando: just the visitPurposeID
-          fullName: user?.name || '',
-          phoneNumber: user?.phone || '',
-          paymentMethodID: paymentMethod || undefined,
-          returnUrl: 'kamarasan://order/callback',
-          voucherCode: appliedVoucher?.code,
-          salesMenus: cart.map(item => ({
-            menuID: item.menuID,
-            qty: item.qty,
-            notes: item.notes || '',
-            extras: item.selectedExtras.map(e => ({ menuExtraID: e.id, qty: 1 })),
-          })),
+          orderType: orderMode,
+          latitude: -6.287,
+          longitude: 106.716,
+          phoneNumber: phoneFormatted.startsWith('62') ? phoneFormatted : `62${phoneFormatted}`,
+          salesMenus,
+          promotionCode: appliedVoucher?.code || '',
+          vouchers: [],
+          giftVoucher: null,
+          memberVoucher: null,
+          memberBenefit: null,
+          memberID: user?.memberCode || '',
+          userToken: user?.authkey || '',
+          deliveryCourierID: 0,
+          scheduledAt: null,
         };
 
-        // Pre-flight check (non-blocking)
-        try { await checkItems(currentBranchCode, orderPayload.salesMenus); } catch {}
+        const calcResult = await calculateTotal(currentBranchCode, calcPayload);
+        const grandTotal = calcResult.grandTotal ?? calcResult.data?.grandTotal;
+        const roundingTotal = calcResult.roundingTotal ?? calcResult.data?.roundingTotal ?? 0;
+        if (!grandTotal) throw new Error('Gagal menghitung total pesanan');
+        // ESB formula: amount = grandTotal - roundingTotal (roundingTotal is negative)
+        const esbAmount = grandTotal - roundingTotal;
+
+        // Step 2: Submit order with ESB-verified amount
+        const orderPayload = {
+          orderType: orderMode,
+          orderTypeName: null,
+          fullName: user?.name || 'Guest',
+          email: '',
+          phoneNumber: phoneFormatted,
+          visitPurposeID,
+          deliveryAddress: '',
+          deliveryAddressInfo: '',
+          latitude: -6.287,
+          longitude: 106.716,
+          memberID: user?.memberCode || '',
+          salesMenus,
+          promotionCode: appliedVoucher?.code || '',
+          vouchers: [],
+          paymentMethodID: paymentMethod || 'dana',
+          amount: esbAmount,
+          returnUrl: 'kamarasan://order/callback',
+          refApp: null,
+          userToken: user?.authkey || '',
+          paymentPhoneNumber: phoneFormatted.startsWith('62') ? phoneFormatted : `62${phoneFormatted}`,
+          tableName: null,
+          tokenID: '',
+          authenticationID: '',
+          cvn: '',
+          bin: '',
+          customerNotes: null,
+          additionalCustomerInfo: null,
+          salesModeParams: false,
+          giftVoucher: null,
+          memberVoucher: null,
+          memberBenefit: null,
+          questionAnswer: [],
+          deliveryCourierID: 0,
+          scheduledAt: null,
+          platformFees: [],
+        };
 
         const result = await saveOrder(currentBranchCode, orderPayload, user?.authkey);
         orderId = result.orderID || result.data?.orderID || result.id || '';
