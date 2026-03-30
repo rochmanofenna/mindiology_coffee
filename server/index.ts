@@ -147,15 +147,17 @@ app.post('/api/order/calculate', async (req, res) => {
 app.post('/api/order', async (req, res) => {
   try {
     const { branch, userToken, ...orderData } = req.body;
+    console.log(`[order] Submitting to ESB:`, JSON.stringify(orderData, null, 2));
     const data = await esb('/qsv1/order', {
       method: 'POST',
       branch,
-      userToken, // Forward user auth token if provided
+      userToken,
       body: orderData,
     });
-    // Returns: orderID, queueNum, status, transactionDate
+    console.log(`[order] ESB response:`, JSON.stringify(data, null, 2));
     res.json(data);
   } catch (err: any) {
+    console.error(`[order] ESB error:`, JSON.stringify(err, null, 2));
     res.status(err.status || 500).json(err);
   }
 });
@@ -315,6 +317,7 @@ app.post('/api/auth/whatsapp/send-otp', async (req, res) => {
 app.post('/api/auth/whatsapp/verify', async (req, res) => {
   try {
     const { otp } = req.body;
+    console.log(`[auth] Verifying OTP: ${otp}`);
     // Use production URL for auth endpoints
     const esbRes = await fetch(`${ESB_AUTH_BASE}/customer/whatsapp/get-status-otp`, {
       method: 'POST',

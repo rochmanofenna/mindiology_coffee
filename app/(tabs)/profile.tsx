@@ -81,7 +81,7 @@ export default function ProfileScreen() {
           </LinearGradient>
         </View>
         <Text style={styles.name}>{user?.name || 'Tamu'}</Text>
-        <Text style={styles.memberSince}>{user?.memberCode ? `Member ${user.memberCode}` : 'Belum login'}</Text>
+        <Text style={styles.memberSince}>{user?.memberCode ? `Member ${user.memberCode}` : user ? `+${user.phone}` : 'Belum login'}</Text>
 
         <View style={styles.statRow}>
           <View style={styles.stat}>
@@ -90,7 +90,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <Text style={[styles.statNum, { color: TIER_TEXT_COLORS[tier] }]}>{tier}</Text>
+            <Text style={[styles.statNum, { color: TIER_TEXT_COLORS[tier], fontSize: tier.length > 5 ? 18 : 28 }]} numberOfLines={1} adjustsFontSizeToFit>{tier}</Text>
             <Text style={styles.statLabel}>TIER</Text>
           </View>
           <View style={styles.statDivider} />

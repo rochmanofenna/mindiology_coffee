@@ -68,15 +68,19 @@ export default function WhatsAppWaitingScreen() {
     const poll = async () => {
       try {
         const result = await verifyOTP(otpData.otp);
-        if (result.status === 'VERIFIED') {
+        // ESB wraps response in { data: { status, verifiedPhoneNumber, authkey } }
+        const otpStatus = result.data?.status || result.status;
+        const phone = result.data?.verifiedPhoneNumber || result.verifiedPhoneNumber || '';
+        const authkey = result.data?.authkey || result.authkey || '';
+
+        if (otpStatus === 'VERIFIED') {
           setStatus('verifying');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          await login(result.verifiedPhoneNumber || '', result.authkey || '', currentBranchCode);
+          await login(phone, authkey, currentBranchCode);
           setStatus('verified');
           setTimeout(() => router.replace('/'), 500);
         }
-        // PENDING = keep polling, EXPIRED = stop
-        if (result.status === 'EXPIRED') {
+        if (otpStatus === 'EXPIRED') {
           setStatus('error');
           setErrorMsg('Kode OTP sudah kadaluarsa. Silakan coba lagi.');
           if (pollRef.current) clearInterval(pollRef.current);

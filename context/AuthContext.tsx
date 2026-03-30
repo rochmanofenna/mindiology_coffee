@@ -69,11 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (phone: string, authkey: string, branch: string) => {
-    const memberData = await checkMembership(branch, phone);
+    let memberData: any = null;
+    try {
+      memberData = await checkMembership(branch, phone);
+    } catch {
+      // Membership check failed (staging auth issue, network, etc.) — proceed with basic user
+    }
 
-    // Check if user is registered
-    if (memberData?.status === 'NOT_REGISTERED' || (!memberData?.memberName && !memberData?.name && !memberData?.memberCode)) {
-      // Create a basic user from phone number only
+    // No member data or not registered — create basic user
+    if (!memberData || memberData?.status === 'NOT_REGISTERED' || (!memberData?.memberName && !memberData?.name && !memberData?.memberCode)) {
       const basicUser: User = {
         phone,
         authkey,
@@ -92,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       phone,
       authkey,
       name: memberData.memberName || memberData.name || phone,
-      memberCode: memberData.memberCode || memberData.memberID || `KMR-${phone.slice(-6)}`,
+      memberCode: memberData.memberCode || memberData.memberID || '',
       points: memberData.totalPoint || memberData.points || 0,
       tier: determineTier(memberData.totalPoint || 0),
     };

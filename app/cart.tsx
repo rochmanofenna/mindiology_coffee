@@ -19,26 +19,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing, fmtPrice } from '@/constants/theme';
+import { CONFIG } from '@/constants/config';
+import { PAYMENT_METHODS } from '@/constants/payments';
 import { useBranch } from '@/context/BranchContext';
 import { useCart, type CartItem } from '@/context/CartContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { saveOrder, checkItems, calculateTotal, getPromotions, validatePayment } from '@/services/api';
+import { saveOrder, checkItems, getPromotions } from '@/services/api';
 import { useOrder } from '@/context/OrderContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-// ---------------------------------------------------------------------------
-// Helper: payment icon mapping
-// ---------------------------------------------------------------------------
-function getPaymentIcon(id: string): keyof typeof Ionicons.glyphMap {
-  if (id.toLowerCase().includes('dana')) return 'wallet-outline';
-  if (id.toLowerCase().includes('ovo')) return 'wallet-outline';
-  if (id.toLowerCase().includes('qris')) return 'qr-code-outline';
-  if (id.toLowerCase().includes('va')) return 'business-outline';
-  if (id.toLowerCase().includes('shopee')) return 'cart-outline';
-  return 'card-outline';
-}
 
 // ---------------------------------------------------------------------------
 // Order Confirmation (shown after successful checkout)
@@ -126,15 +116,17 @@ function OrderConfirmation({
         </View>
       </View>
 
-      {/* Primary: track order */}
-      <TouchableOpacity activeOpacity={0.8} onPress={onTrack} style={{ width: '100%' }}>
-        <LinearGradient
-          colors={[Colors.green, Colors.greenDeep]}
-          style={confirmStyles.primaryBtn}
-        >
-          <Text style={confirmStyles.primaryBtnText}>Lacak Pesanan</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+      {/* Primary: track order (hidden in staging mode) */}
+      {CONFIG.REAL_ORDERS_ENABLED && (
+        <TouchableOpacity activeOpacity={0.8} onPress={onTrack} style={{ width: '100%' }}>
+          <LinearGradient
+            colors={[Colors.green, Colors.greenDeep]}
+            style={confirmStyles.primaryBtn}
+          >
+            <Text style={confirmStyles.primaryBtnText}>Lacak Pesanan</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
 
       {/* Secondary: home */}
       <TouchableOpacity activeOpacity={0.8} onPress={onHome} style={confirmStyles.secondaryBtn}>
@@ -184,15 +176,16 @@ export default function CartScreen() {
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; discount: number; name: string } | null>(null);
   const [promoLoading, setPromoLoading] = useState(false);
 
-  // Payment methods from branch data
-  const paymentMethods = branchData?.payment?.online?.filter((m: any) => m.available) || [];
+  // Payment methods from static config
+  const availablePayments = PAYMENT_METHODS.filter(m => m.available);
+  const comingSoonPayments = PAYMENT_METHODS.filter(m => !m.available);
 
   // Auto-select first available payment method
   useEffect(() => {
-    if (paymentMethods.length > 0 && !paymentMethod) {
-      setPaymentMethod(paymentMethods[0].id);
+    if (availablePayments.length > 0 && !paymentMethod) {
+      setPaymentMethod(availablePayments[0].id);
     }
-  }, [paymentMethods]);
+  }, [availablePayments]);
 
   // Price calculations
   const tax = Math.round(subtotal * taxRate);
@@ -255,7 +248,6 @@ export default function CartScreen() {
   };
 
   const handleCheckout = async () => {
-    // Auth gate
     if (!user) {
       Alert.alert('Login Diperlukan', 'Silakan login terlebih dahulu untuk memesan', [
         { text: 'Login', onPress: () => router.push('/auth/welcome' as any) },
@@ -267,90 +259,70 @@ export default function CartScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     setLoading(true);
 
-    const visitPurposeID = orderMode === 'dineIn' ? '65' : orderMode === 'delivery' ? '64' : '63';
-    const orderItems = cart.map(item => ({
-      menuID: item.menuID,
-      qty: item.qty,
-      notes: item.notes || '',
-      extras: item.selectedExtras.map(e => ({
-        menuExtraID: e.id,
-        qty: 1,
-      })),
-    }));
-    const orderPayload = {
-      visitPurposeID,
-      paymentMethod: paymentMethod || undefined,
-      voucherCode: appliedVoucher?.code,
-      customerName: user?.name,
-      customerPhone: user?.phone,
-      items: orderItems,
-    };
-
     try {
-      // Step 1: Check POS availability
-      try {
-        await checkItems(currentBranchCode, orderItems);
-      } catch (posErr: any) {
-        Alert.alert('Outlet Tidak Tersedia', posErr?.message || 'Outlet sedang offline. Coba beberapa saat lagi.');
-        setLoading(false);
-        return;
+      let orderId: string;
+      let queueNum = '';
+
+      if (CONFIG.REAL_ORDERS_ENABLED) {
+        // REAL MODE: Submit to ESB
+        const visitPurposeID = orderMode === 'dineIn' ? '65' : orderMode === 'delivery' ? '64' : '63';
+        const orderPayload = {
+          orderType: orderMode,
+          visitPurposeID,
+          encryptedVisitPurpose: visitPurposeID, // Confirmed by Nando: just the visitPurposeID
+          fullName: user?.name || '',
+          phoneNumber: user?.phone || '',
+          paymentMethodID: paymentMethod || undefined,
+          returnUrl: 'kamarasan://order/callback',
+          voucherCode: appliedVoucher?.code,
+          salesMenus: cart.map(item => ({
+            menuID: item.menuID,
+            qty: item.qty,
+            notes: item.notes || '',
+            extras: item.selectedExtras.map(e => ({ menuExtraID: e.id, qty: 1 })),
+          })),
+        };
+
+        // Pre-flight check (non-blocking)
+        try { await checkItems(currentBranchCode, orderPayload.salesMenus); } catch {}
+
+        const result = await saveOrder(currentBranchCode, orderPayload, user?.authkey);
+        orderId = result.orderID || result.data?.orderID || result.id || '';
+        queueNum = result.queueNum || result.data?.queueNum || '';
+      } else {
+        // STAGING MODE: Simulate order
+        await new Promise(resolve => setTimeout(resolve, CONFIG.SIMULATED_ORDER_DELAY));
+        orderId = `KMR-${String(Math.floor(Math.random() * 90000) + 10000)}`;
+        queueNum = `Q${Math.floor(Math.random() * 900) + 100}`;
       }
 
-      // Step 2: Get ESB-verified total (use if available, fall back to client calculation)
-      try {
-        const calcResult = await calculateTotal(currentBranchCode, orderPayload);
-        const esbTotal = calcResult?.grandTotal || calcResult?.data?.grandTotal || calcResult?.total;
-        if (esbTotal && typeof esbTotal === 'number') {
-          // ESB total is in Rupiah — convert to K for display consistency
-          const esbTotalK = esbTotal / 1000;
-          if (Math.abs(esbTotalK - total) > 1) {
-            // Significant difference — use ESB total
-            console.log(`[checkout] Client total: ${total}K, ESB total: ${esbTotalK}K — using ESB`);
-          }
-        }
-      } catch {
-        // calculateTotal failed — proceed with client-side total (acceptable fallback)
-      }
-
-      // Step 3: Submit order with user auth token
-      const result = await saveOrder(currentBranchCode, orderPayload, user?.authkey);
       const earnedPoints = Math.round(subtotal);
-      const orderItems = [...cart];
-
-      const generatedOrderID = result.orderID || result.id || `KMR-${Math.floor(Math.random() * 9000 + 1000)}`;
-      const generatedQueueNum = result.queueNum || '';
 
       addActiveOrder({
-        orderId: generatedOrderID,
-        queueNum: generatedQueueNum,
+        orderId,
+        queueNum,
         status: 'received',
         items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
         total,
-        orderMode: orderMode,
+        orderMode,
         createdAt: new Date().toISOString(),
         branchCode: currentBranchCode,
       });
 
       clearCart();
       setLastOrder({
-        items: orderItems,
+        items: [...cart],
         total,
         points: earnedPoints,
-        orderID: generatedOrderID,
-        queueNum: generatedQueueNum,
+        orderID: orderId,
+        queueNum,
       });
+      setLoading(false);
       setConfirmed(true);
     } catch (err: any) {
-      Alert.alert(
-        'Gagal Memproses Pesanan',
-        err.message || 'Terjadi kesalahan. Silakan coba lagi.',
-        [
-          { text: 'Coba Lagi', onPress: handleCheckout },
-          { text: 'Batal', style: 'cancel' },
-        ]
-      );
-    } finally {
       setLoading(false);
+      const msg = typeof err?.message === 'string' ? err.message : 'Terjadi kesalahan';
+      Alert.alert('Gagal Memproses Pesanan', msg, [{ text: 'OK' }]);
     }
   };
 
@@ -419,7 +391,7 @@ export default function CartScreen() {
   }
 
   // Determine if checkout should be disabled
-  const checkoutDisabled = cart.length === 0 || loading || (!paymentMethod && paymentMethods.length > 0);
+  const checkoutDisabled = cart.length === 0 || loading || (!paymentMethod && availablePayments.length > 0);
 
   // Main cart view ---------------------------------------------------------
   return (
@@ -476,6 +448,14 @@ export default function CartScreen() {
             );
           })}
         </View>
+
+        {/* ---- Staging Banner ---- */}
+        {!CONFIG.REAL_ORDERS_ENABLED && __DEV__ && (
+          <View style={styles.stagingBanner}>
+            <Ionicons name="flask-outline" size={14} color="#92400E" />
+            <Text style={styles.stagingText}>Mode Staging — Pesanan disimulasikan</Text>
+          </View>
+        )}
 
         {/* ---- Branch Display ---- */}
         <TouchableOpacity style={styles.branchRow} activeOpacity={0.7}>
@@ -593,24 +573,31 @@ export default function CartScreen() {
         </View>
 
         {/* ---- Payment Method Selection ---- */}
-        {paymentMethods.length > 0 && (
-          <View style={styles.paymentSection}>
-            <Text style={styles.paymentTitle}>Metode Pembayaran</Text>
-            {paymentMethods.map((method: any) => (
-              <TouchableOpacity
-                key={method.id}
-                style={[styles.paymentCard, paymentMethod === method.id && styles.paymentCardActive]}
-                onPress={() => { setPaymentMethod(method.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-              >
-                <View style={styles.paymentIcon}>
-                  <Ionicons name={getPaymentIcon(method.id)} size={20} color={paymentMethod === method.id ? Colors.green : Colors.textSoft} />
-                </View>
-                <Text style={styles.paymentName}>{method.name}</Text>
-                {paymentMethod === method.id && <Ionicons name="checkmark-circle" size={20} color={Colors.green} />}
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
+        <View style={styles.paymentSection}>
+          <Text style={styles.paymentTitle}>Metode Pembayaran</Text>
+          {availablePayments.map((method) => (
+            <TouchableOpacity
+              key={method.id}
+              style={[styles.paymentCard, paymentMethod === method.id && styles.paymentCardActive]}
+              onPress={() => { setPaymentMethod(method.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            >
+              <View style={styles.paymentIcon}>
+                <Ionicons name={method.icon as any} size={20} color={paymentMethod === method.id ? Colors.green : Colors.textSoft} />
+              </View>
+              <Text style={styles.paymentName}>{method.name}</Text>
+              {paymentMethod === method.id && <Ionicons name="checkmark-circle" size={20} color={Colors.green} />}
+            </TouchableOpacity>
+          ))}
+          {comingSoonPayments.map((method) => (
+            <View key={method.id} style={[styles.paymentCard, styles.paymentCardDisabled]}>
+              <View style={styles.paymentIcon}>
+                <Ionicons name={method.icon as any} size={20} color={Colors.brownLight} />
+              </View>
+              <Text style={[styles.paymentName, { color: Colors.brownLight }]}>{method.name}</Text>
+              <Text style={styles.comingSoonText}>{method.comingSoonText}</Text>
+            </View>
+          ))}
+        </View>
 
         {/* ---- Promo / Voucher Code ---- */}
         <View style={styles.promoSection}>
@@ -939,6 +926,12 @@ const styles = StyleSheet.create({
   paymentCardActive: { borderColor: Colors.green, backgroundColor: Colors.greenMint + '30' },
   paymentIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F5F1EC', alignItems: 'center', justifyContent: 'center' },
   paymentName: { fontFamily: Font.semibold, fontSize: 14, color: Colors.text, flex: 1 },
+  paymentCardDisabled: { opacity: 0.5, borderColor: '#F0EBE4' },
+  comingSoonText: { fontFamily: Font.medium, fontSize: 11, color: Colors.brownLight },
+
+  // Staging Banner
+  stagingBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#FEF3C7', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, marginHorizontal: 24, marginBottom: 12 },
+  stagingText: { fontFamily: Font.medium, fontSize: 12, color: '#92400E' },
 
   // Promo / Voucher
   promoSection: { paddingHorizontal: Spacing.xxl, marginBottom: 16 },
