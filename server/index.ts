@@ -115,11 +115,12 @@ app.get('/api/menu/detail', async (req, res) => {
 // Call BEFORE calculate-total to verify POS is online
 app.post('/api/order/check-items', async (req, res) => {
   try {
-    const { branch, items } = req.body;
+    const { branch, ...body } = req.body;
+    // ESB expects { salesMenus: [...], visitPurposeID: "63" }
     const data = await esb('/qsv1/order/check-items', {
       method: 'POST',
       branch,
-      body: items, // Same item structure as save order
+      body,
     });
     res.json(data);
   } catch (err: any) {
@@ -146,13 +147,12 @@ app.post('/api/order/calculate', async (req, res) => {
 // POST /api/order
 app.post('/api/order', async (req, res) => {
   try {
-    const { branch, userToken, ...orderData } = req.body;
+    const { branch, ...orderData } = req.body;
     console.log(`[order] Submitting to ESB:`, JSON.stringify(orderData, null, 2));
     const data = await esb('/qsv1/order', {
       method: 'POST',
       branch,
-      userToken,
-      body: orderData,
+      body: orderData, // userToken stays in body — ESB expects it there, not as Bearer auth
     });
     console.log(`[order] ESB response:`, JSON.stringify(data, null, 2));
     res.json(data);
@@ -210,11 +210,19 @@ app.get('/api/vouchers', async (req, res) => {
 app.post('/api/membership/check', async (req, res) => {
   try {
     const { branch, phoneNumber, countryCode } = req.body;
-    const data = await esb('/qsv1/membership/check-member-status', {
+    // ESB docs: only Data-Branch required, no Data-Company
+    // Use production URL (staging returns "Invalid authentication credentials")
+    const esbRes = await fetch(`${ESB_AUTH_BASE}/qsv1/membership/check-member-status`, {
       method: 'POST',
-      branch,
-      body: { phoneNumber, countryCode: countryCode || '+62' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ESB_TOKEN}`,
+        'Data-Branch': branch || DEFAULT_BRANCH,
+      },
+      body: JSON.stringify({ phoneNumber, countryCode: countryCode || '+62' }),
     });
+    const data = await esbRes.json();
+    if (!esbRes.ok) throw { status: esbRes.status, ...data };
     // Returns: { status: "REGISTERED" } or { status: "NOT_REGISTERED" }
     res.json(data);
   } catch (err: any) {
@@ -226,14 +234,14 @@ app.post('/api/membership/check', async (req, res) => {
 // 5. PROMOTIONS
 // ═══════════════════════════════════════
 
-// POST /api/promotions
+// POST /api/promotions — list available promotions for a visit purpose
 app.post('/api/promotions', async (req, res) => {
   try {
-    const { branch, ...body } = req.body;
+    const { branch, visitPurposeID, scheduledAt } = req.body;
     const data = await esb('/qsv1/promotion', {
       method: 'POST',
       branch,
-      body,
+      body: { visitPurposeID, ...(scheduledAt ? { scheduledAt } : {}) },
     });
     res.json(data);
   } catch (err: any) {
@@ -412,10 +420,17 @@ app.post('/api/reservations', async (req, res) => {
 // POST /api/user/auth
 app.post('/api/user/auth', async (req, res) => {
   try {
-    const data = await esb('/v1/user/auth', {
+    // /v1/ endpoints use production URL
+    const esbRes = await fetch(`${ESB_AUTH_BASE}/v1/user/auth`, {
       method: 'POST',
-      body: req.body,
+      headers: {
+        'Content-Type': 'application/json',
+        'Data-Company': COMPANY_CODE,
+      },
+      body: JSON.stringify(req.body),
     });
+    const data = await esbRes.json();
+    if (!esbRes.ok) throw { status: esbRes.status, ...data };
     res.json(data);
   } catch (err: any) {
     res.status(err.status || 500).json(err);
@@ -425,12 +440,19 @@ app.post('/api/user/auth', async (req, res) => {
 // POST /api/user/orders (paginated history)
 app.post('/api/user/orders', async (req, res) => {
   try {
-    const { userToken, ...body } = req.body;
-    const data = await esb('/v1/user/order', {
+    const { userToken, page } = req.body;
+    // /v1/ endpoints use production URL + userToken as Bearer auth
+    const esbRes = await fetch(`${ESB_AUTH_BASE}/v1/user/order`, {
       method: 'POST',
-      userToken,
-      body,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userToken}`,
+        'Data-Company': COMPANY_CODE,
+      },
+      ...(page ? { body: JSON.stringify({ page: String(page) }) } : {}),
     });
+    const data = await esbRes.json();
+    if (!esbRes.ok) throw { status: esbRes.status, ...data };
     res.json(data);
   } catch (err: any) {
     res.status(err.status || 500).json(err);
@@ -440,9 +462,16 @@ app.post('/api/user/orders', async (req, res) => {
 // GET /api/user/addresses
 app.get('/api/user/addresses', async (req, res) => {
   try {
-    const data = await esb('/v1/user/address', {
-      userToken: req.headers['x-user-token'] as string,
+    const userToken = req.headers['x-user-token'] as string || req.query.userToken as string;
+    // /v1/ endpoints use production URL + userToken as Bearer auth
+    const esbRes = await fetch(`${ESB_AUTH_BASE}/v1/user/address`, {
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'Data-Company': COMPANY_CODE,
+      },
     });
+    const data = await esbRes.json();
+    if (!esbRes.ok) throw { status: esbRes.status, ...data };
     res.json(data);
   } catch (err: any) {
     res.status(err.status || 500).json(err);
