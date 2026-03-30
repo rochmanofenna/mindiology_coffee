@@ -1,6 +1,5 @@
 // app/(tabs)/_layout.tsx — Tab navigation with custom tab bar + center action button
 import { Tabs } from 'expo-router';
-import { Colors } from '@/constants/theme';
 import { CustomTabBar } from '@/components/CustomTabBar';
 
 export default function TabLayout() {

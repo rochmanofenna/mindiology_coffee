@@ -13,6 +13,7 @@ import { CartProvider } from '@/context/CartContext';
 import { ReservationProvider } from '@/context/ReservationContext';
 import { OrderProvider } from '@/context/OrderContext';
 import { Colors } from '@/constants/theme';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -25,6 +26,9 @@ function AppNavigator() {
       router.replace('/auth/welcome');
     }
   }, [isLoading, user, isGuest]);
+
+  // Prevent flash of home screen while checking auth state
+  if (isLoading) return null;
 
   return (
     <>
@@ -128,6 +132,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <ErrorBoundary>
       <AuthProvider>
         <BranchProvider>
           <CartProvider>
@@ -139,6 +144,7 @@ export default function RootLayout() {
           </CartProvider>
         </BranchProvider>
       </AuthProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

@@ -1,12 +1,13 @@
 // app/reservation/confirm.tsx — Reservation Confirmation & Success
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing } from '@/constants/theme';
 import { useReservation, type Reservation } from '@/context/ReservationContext';
+import { createReservation } from '@/services/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function SuccessScreen({ reservation, onDone }: { reservation: Reservation; onDone: () => void }) {
@@ -86,13 +87,28 @@ export default function ConfirmReservation() {
     setError(null);
 
     try {
-      // TODO: Call createReservation API when backend is ready
-      // await createReservation(selectedBranch.branchCode, { date: selectedDate, time: selectedTime, partySize, notes });
+      let reservationId = '';
+      let esbFailed = false;
+      try {
+        const result = await createReservation(selectedBranch.branchCode, {
+          reservationDate: selectedDate,
+          reservationTime: selectedTime,
+          totalGuest: partySize,
+          notes: notes || '',
+        });
+        reservationId = result.reservationCode || result.data?.reservationCode || result.id || '';
+      } catch {
+        esbFailed = true;
+        reservationId = `RSV-${Math.floor(Math.random() * 900000 + 100000)}`;
+      }
 
-      await new Promise(resolve => setTimeout(resolve, 1000)); // simulate API call
+      if (esbFailed) {
+        // Warn user that ESB didn't confirm — reservation may not be registered
+        setError('Reservasi tersimpan secara lokal. Hubungi outlet untuk konfirmasi.');
+      }
 
       const reservation: Reservation = {
-        id: `RSV-${Math.floor(Math.random() * 900000 + 100000)}`,
+        id: reservationId,
         branchId: selectedBranch.id,
         branchName: selectedBranch.name,
         date: selectedDate,
@@ -124,6 +140,7 @@ export default function ConfirmReservation() {
   }
 
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -134,7 +151,7 @@ export default function ConfirmReservation() {
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Summary Card */}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Detail Reservasi</Text>
@@ -218,6 +235,7 @@ export default function ConfirmReservation() {
         </TouchableOpacity>
       </View>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 

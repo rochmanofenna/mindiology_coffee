@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Image, Dimensions, TextInput, Animated,
+  Image, Dimensions, TextInput, Animated, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -107,13 +107,15 @@ export default function ItemDetailScreen() {
     try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
     setAddedAnim(true);
     showToast();
-    setTimeout(() => {
+    const t = setTimeout(() => {
       setAddedAnim(false);
       router.back();
     }, 600);
+    return () => clearTimeout(t);
   };
 
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={styles.container}>
       {/* Toast notification */}
       <Animated.View
@@ -131,6 +133,7 @@ export default function ItemDetailScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
         contentContainerStyle={{ paddingBottom: 120 }}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Hero Image */}
         {hasImage ? (
@@ -322,6 +325,7 @@ export default function ItemDetailScreen() {
         </TouchableOpacity>
       </View>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -421,7 +425,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: Colors.goldLight,
   },
 
   // Info
@@ -477,14 +481,14 @@ const styles = StyleSheet.create({
   itemDesc: {
     fontFamily: Font.regular,
     fontSize: 15,
-    color: '#4A5568',
+    color: Colors.textSoft,
     lineHeight: 22,
     marginBottom: 18,
   },
   price: {
-    fontFamily: Font.displayBlack,
+    fontFamily: Font.displayBold,
     fontSize: 28,
-    color: '#1B4332',
+    color: Colors.greenForest,
     marginBottom: 2,
   },
   taxNote: {
@@ -497,7 +501,7 @@ const styles = StyleSheet.create({
   // Divider
   divider: {
     height: 1,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F0EBE4',
     marginHorizontal: Spacing.xxl,
     marginTop: 16,
     marginBottom: 8,
@@ -529,7 +533,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F9FAFB',
+    borderBottomColor: '#F5F1EC',
   },
   extraLeft: {
     flexDirection: 'row',
@@ -542,7 +546,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#D1D5DB',
+    borderColor: '#E8E0D8',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -571,11 +575,11 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   notesInput: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.white,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0EBE4',
     minHeight: 50,
     fontFamily: Font.regular,
     fontSize: 14,
@@ -600,12 +604,12 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderColor: '#F0EBE4',
     alignItems: 'center',
     justifyContent: 'center',
   },
   qtyBtnDisabled: {
-    borderColor: '#F3F4F6',
+    borderColor: '#F5F1EC',
   },
   qtyBtnAdd: {
     width: 44,
@@ -633,7 +637,7 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: '#F0EBE4',
   },
   addBtn: {
     height: 56,

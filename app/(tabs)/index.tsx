@@ -230,11 +230,11 @@ export default function HomeScreen() {
     );
   }
 
-  const branchDisplayName = STORES.find(s => s.branchCode === 'MDOUT')?.shortName || branch?.branchName || 'Emerald Bintaro';
+  const branchDisplayName = STORES.find(s => s.branchCode === currentBranchCode)?.shortName || branch?.branchName || 'Mindiology';
 
   const SECONDARY_ACTIONS = [
-    { icon: 'pricetag-outline' as const, label: 'Voucher', badge: 2 },
-    { icon: 'flame-outline' as const, label: 'Daily Special', badge: 1 },
+    { icon: 'pricetag-outline' as const, label: 'Voucher', badge: 0 },
+    { icon: 'flame-outline' as const, label: 'Daily Special', badge: 0 },
     { icon: 'gift-outline' as const, label: 'Gift Card', badge: 0 },
     { icon: 'receipt-outline' as const, label: 'Riwayat', badge: 3 },
   ];
@@ -264,7 +264,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerIcon}>
               <Ionicons name="notifications-outline" size={22} color={Colors.text} />
-              <View style={styles.notifDot} />
             </TouchableOpacity>
           </View>
         </View>
@@ -595,7 +594,7 @@ const styles = StyleSheet.create({
   recInfo: { padding: 10, flex: 1, justifyContent: 'space-between' },
   recName: { fontFamily: Font.semibold, fontSize: 13, color: Colors.text, lineHeight: 17 },
   recBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  recPrice: { fontFamily: Font.bold, fontSize: 14, color: Colors.green },
+  recPrice: { fontFamily: Font.bold, fontSize: 14, color: Colors.greenForest },
   recAddBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
   recChefBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(255,255,255,0.92)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
   recChefText: { fontFamily: Font.extrabold, fontSize: 8, color: Colors.green, letterSpacing: 0.5 },
@@ -610,7 +609,7 @@ const styles = StyleSheet.create({
   weeklyDesc: { fontFamily: Font.regular, fontSize: 12, color: 'rgba(255,255,255,0.8)' },
 
   // Stores
-  storeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.white, borderRadius: 14, padding: 12, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#D4A843', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  storeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.white, borderRadius: 14, padding: 12, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#D4A843', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
   storeImagePlaceholder: { width: 64, height: 64, borderRadius: 12, backgroundColor: Colors.greenPale, alignItems: 'center', justifyContent: 'center' },
   storeThumb: { width: 64, height: 64, borderRadius: 12, resizeMode: 'cover' },
   storeInfo: { flex: 1 },

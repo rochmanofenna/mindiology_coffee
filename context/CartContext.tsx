@@ -23,7 +23,6 @@ interface CartContextType {
   updateQty: (index: number, newQty: number) => void;
   removeItem: (index: number) => void;
   clearCart: () => void;
-  checkout: (taxRate?: number, serviceRate?: number) => { items: CartItem[]; total: number };
   cartCount: number;
   subtotal: number;
   subtotalRupiah: number;
@@ -93,19 +92,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const subtotalRupiah = cart.reduce((sum, item) => sum + item.apiPrice * item.qty, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
-  const checkout = useCallback((taxRate = 0.10, serviceRate = 0) => {
-    const sub = cart.reduce((s, i) => s + i.price * i.qty, 0);
-    const tax = Math.round(sub * taxRate);
-    const svc = Math.round(sub * serviceRate);
-    const total = sub + tax + svc;
-    const orderItems = [...cart];
-    setCart([]);
-    return { items: orderItems, total };
-  }, [cart]);
-
   return (
     <CartContext.Provider
-      value={{ cart, addToCart, updateQty, removeItem, clearCart, checkout, cartCount, subtotal, subtotalRupiah }}
+      value={{ cart, addToCart, updateQty, removeItem, clearCart, cartCount, subtotal, subtotalRupiah }}
     >
       {children}
     </CartContext.Provider>

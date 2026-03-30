@@ -296,8 +296,8 @@ export const checkItems = (branch: string, items: any[]) =>
 export const calculateTotal = (branch: string, orderData: any) =>
   api('/api/order/calculate', { body: { branch, ...orderData } });
 
-export const saveOrder = (branch: string, orderData: any) =>
-  api('/api/order', { body: { branch, ...orderData } });
+export const saveOrder = (branch: string, orderData: any, userToken?: string) =>
+  api('/api/order', { body: { branch, userToken, ...orderData } });
 
 export const getOrder = (orderId: string, branch: string) =>
   api(`/api/order/${orderId}`, { branch });

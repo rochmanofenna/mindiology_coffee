@@ -12,6 +12,12 @@ import { useBranch } from '@/context/BranchContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Shared OTP state between welcome and phone screens (avoids URL param exposure)
+let pendingOtp: { otp: string; url: string } | null = null;
+export function setPendingOtp(data: { otp: string; url: string }) { pendingOtp = data; }
+export function getPendingOtp() { return pendingOtp; }
+export function clearPendingOtp() { pendingOtp = null; }
+
 export default function WelcomeScreen() {
   const router = useRouter();
   const { setGuest } = useAuth();
@@ -24,8 +30,9 @@ export default function WelcomeScreen() {
     try {
       const result = await sendWhatsAppOTP(currentBranchCode);
       const { otp, otpMessageUrl } = result.data;
-      // Navigate to waiting screen with OTP data
-      router.push(`/auth/phone?otp=${encodeURIComponent(otp)}&url=${encodeURIComponent(otpMessageUrl)}`);
+      // Store OTP in memory instead of URL params to avoid exposure
+      setPendingOtp({ otp, url: otpMessageUrl });
+      router.push('/auth/phone');
     } catch (err: any) {
       Alert.alert('Gagal', err?.message || 'Tidak bisa menghubungi server. Coba lagi.');
     } finally {

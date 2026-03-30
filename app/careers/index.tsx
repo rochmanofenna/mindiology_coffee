@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
 
   list: { paddingHorizontal: Spacing.xxl, paddingBottom: 40 },
 
-  jobCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 18, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  jobCard: { backgroundColor: Colors.white, borderRadius: 16, padding: 18, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
   jobTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   jobTitle: { fontFamily: Font.bold, fontSize: 16, color: Colors.text },
   jobBranch: { fontFamily: Font.regular, fontSize: 12, color: Colors.textSoft, marginTop: 2 },

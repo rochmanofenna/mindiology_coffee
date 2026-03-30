@@ -19,7 +19,7 @@ function getNext14Days(): { date: string; dayName: string; dayNum: number; month
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     result.push({
-      date: d.toISOString().split('T')[0],
+      date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
       dayName: days[d.getDay()],
       dayNum: d.getDate(),
       monthShort: months[d.getMonth()],

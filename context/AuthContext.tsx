@@ -1,5 +1,6 @@
 // context/AuthContext.tsx — Authentication state manager
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import * as SecureStore from 'expo-secure-store';
 import { checkMembership } from '@/services/api';
 import {
   cacheGet,
@@ -9,7 +10,6 @@ import {
   storageSet,
   storageRemove,
   AUTH_USER_KEY,
-  AUTH_TOKEN_KEY,
   GUEST_KEY,
   CART_KEY,
 } from '@/utils/cache';
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const [cachedUser, token, guestFlag] = await Promise.all([
           cacheGet<User>(AUTH_USER_KEY),
-          storageGet(AUTH_TOKEN_KEY),
+          SecureStore.getItemAsync('auth_token'),
           storageGet(GUEST_KEY),
         ]);
 
@@ -71,6 +71,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (phone: string, authkey: string, branch: string) => {
     const memberData = await checkMembership(branch, phone);
 
+    // Check if user is registered
+    if (memberData?.status === 'NOT_REGISTERED' || (!memberData?.memberName && !memberData?.name && !memberData?.memberCode)) {
+      // Create a basic user from phone number only
+      const basicUser: User = {
+        phone,
+        authkey,
+        name: phone,
+        memberCode: '',
+        points: 0,
+        tier: 'Perunggu',
+      };
+      setUser(basicUser);
+      await cacheSet(AUTH_USER_KEY, basicUser);
+      await SecureStore.setItemAsync('auth_token', authkey);
+      return;
+    }
+
     const newUser: User = {
       phone,
       authkey,
@@ -82,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     await Promise.all([
       cacheSet(AUTH_USER_KEY, newUser),
-      storageSet(AUTH_TOKEN_KEY, authkey),
+      SecureStore.setItemAsync('auth_token', authkey),
       storageRemove(GUEST_KEY),
     ]);
 
@@ -93,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await Promise.all([
       cacheClear(AUTH_USER_KEY),
-      storageRemove(AUTH_TOKEN_KEY),
+      SecureStore.deleteItemAsync('auth_token'),
       storageRemove(GUEST_KEY),
       cacheClear(CART_KEY),
     ]);

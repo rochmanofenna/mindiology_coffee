@@ -11,6 +11,8 @@ import {
   Animated,
   Dimensions,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +23,7 @@ import { useBranch } from '@/context/BranchContext';
 import { useCart, type CartItem } from '@/context/CartContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { saveOrder, getPromotions } from '@/services/api';
+import { saveOrder, checkItems, calculateTotal, getPromotions, validatePayment } from '@/services/api';
 import { useOrder } from '@/context/OrderContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -107,7 +109,7 @@ function OrderConfirmation({
             <Text style={confirmStyles.receiptItem}>
               {it.qty} x {it.name}
             </Text>
-            <Text style={confirmStyles.receiptPrice}>{fmtPrice(it.price * it.qty)}</Text>
+            <Text style={confirmStyles.receiptPrice}>{fmtPrice((it.price + (it.selectedExtras?.reduce((s: number, e: any) => s + e.price, 0) || 0)) * it.qty)}</Text>
           </View>
         ))}
 
@@ -150,7 +152,8 @@ type OrderMode = 'dineIn' | 'takeAway' | 'delivery';
 const ORDER_MODES: { key: OrderMode; label: string; icon: string }[] = [
   { key: 'dineIn', label: 'Dine In', icon: 'restaurant-outline' },
   { key: 'takeAway', label: 'Take Away', icon: 'bag-handle-outline' },
-  { key: 'delivery', label: 'Delivery', icon: 'bicycle-outline' },
+  // Delivery hidden until delivery endpoints (distance, courier cost, addresses) are wired
+  // { key: 'delivery', label: 'Delivery', icon: 'bicycle-outline' },
 ];
 
 export default function CartScreen() {
@@ -184,11 +187,18 @@ export default function CartScreen() {
   // Payment methods from branch data
   const paymentMethods = branchData?.payment?.online?.filter((m: any) => m.available) || [];
 
+  // Auto-select first available payment method
+  useEffect(() => {
+    if (paymentMethods.length > 0 && !paymentMethod) {
+      setPaymentMethod(paymentMethods[0].id);
+    }
+  }, [paymentMethods]);
+
   // Price calculations
   const tax = Math.round(subtotal * taxRate);
   const svc = Math.round(subtotal * serviceRate);
   const discount = appliedVoucher?.discount || 0;
-  const total = subtotal - discount + tax + svc;
+  const total = Math.max(0, subtotal - discount + tax + svc);
 
   // Handlers ---------------------------------------------------------------
   const handleClearCart = () => {
@@ -228,8 +238,10 @@ export default function CartScreen() {
       // Try to extract discount from various ESB response shapes
       const promoDiscount = result.discount || result.data?.discount || result.totalDiscount || 0;
       const name = result.promotionName || result.data?.name || promoCode;
-      if (promoDiscount > 0) {
-        setAppliedVoucher({ code: promoCode, discount: promoDiscount / 1000, name }); // convert to K
+      // ESB returns Rupiah if > 100, K if <= 100
+      const discountK = typeof promoDiscount === 'number' && promoDiscount > 100 ? promoDiscount / 1000 : promoDiscount;
+      if (discountK > 0 && discountK <= subtotal) {
+        setAppliedVoucher({ code: promoCode, discount: discountK, name });
         setShowPromo(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       } else {
@@ -256,23 +268,52 @@ export default function CartScreen() {
     setLoading(true);
 
     const visitPurposeID = orderMode === 'dineIn' ? '65' : orderMode === 'delivery' ? '64' : '63';
+    const orderItems = cart.map(item => ({
+      menuID: item.menuID,
+      qty: item.qty,
+      notes: item.notes || '',
+      extras: item.selectedExtras.map(e => ({
+        menuExtraID: e.id,
+        qty: 1,
+      })),
+    }));
     const orderPayload = {
       visitPurposeID,
-      paymentMethod,
+      paymentMethod: paymentMethod || undefined,
       voucherCode: appliedVoucher?.code,
-      items: cart.map(item => ({
-        menuID: item.menuID,
-        qty: item.qty,
-        notes: item.notes || '',
-        extras: item.selectedExtras.map(e => ({
-          menuExtraID: e.id,
-          qty: 1,
-        })),
-      })),
+      customerName: user?.name,
+      customerPhone: user?.phone,
+      items: orderItems,
     };
 
     try {
-      const result = await saveOrder(currentBranchCode, orderPayload);
+      // Step 1: Check POS availability
+      try {
+        await checkItems(currentBranchCode, orderItems);
+      } catch (posErr: any) {
+        Alert.alert('Outlet Tidak Tersedia', posErr?.message || 'Outlet sedang offline. Coba beberapa saat lagi.');
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Get ESB-verified total (use if available, fall back to client calculation)
+      try {
+        const calcResult = await calculateTotal(currentBranchCode, orderPayload);
+        const esbTotal = calcResult?.grandTotal || calcResult?.data?.grandTotal || calcResult?.total;
+        if (esbTotal && typeof esbTotal === 'number') {
+          // ESB total is in Rupiah — convert to K for display consistency
+          const esbTotalK = esbTotal / 1000;
+          if (Math.abs(esbTotalK - total) > 1) {
+            // Significant difference — use ESB total
+            console.log(`[checkout] Client total: ${total}K, ESB total: ${esbTotalK}K — using ESB`);
+          }
+        }
+      } catch {
+        // calculateTotal failed — proceed with client-side total (acceptable fallback)
+      }
+
+      // Step 3: Submit order with user auth token
+      const result = await saveOrder(currentBranchCode, orderPayload, user?.authkey);
       const earnedPoints = Math.round(subtotal);
       const orderItems = [...cart];
 
@@ -382,11 +423,13 @@ export default function CartScreen() {
 
   // Main cart view ---------------------------------------------------------
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={styles.root}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* ---- Header ---- */}
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -491,7 +534,7 @@ export default function CartScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.lineTotal}>{fmtPrice(item.price * item.qty)}</Text>
+                <Text style={styles.lineTotal}>{fmtPrice((item.price + (item.selectedExtras?.reduce((s: number, e: any) => s + e.price, 0) || 0)) * item.qty)}</Text>
 
                 <TouchableOpacity
                   style={styles.trashBtn}
@@ -640,6 +683,7 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 

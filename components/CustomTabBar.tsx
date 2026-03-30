@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font } from '@/constants/theme';
+import { useCart } from '@/context/CartContext';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,6 +20,7 @@ const TAB_CONFIG: { name: string; label: string; iconActive: keyof typeof Ionico
 export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { cartCount } = useCart();
 
   // Breathing glow for center button
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -113,6 +115,11 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                 }}
               >
                 <Ionicons name="restaurant" size={26} color="#fff" />
+                {cartCount > 0 && (
+                  <View style={styles.cartBadge}>
+                    <Text style={styles.cartBadgeText}>{cartCount > 9 ? '9+' : cartCount}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </Animated.View>
           );
@@ -186,5 +193,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: Colors.cream,
+  },
+  cartBadgeText: {
+    fontFamily: Font.bold,
+    fontSize: 9,
+    color: '#fff',
   },
 });

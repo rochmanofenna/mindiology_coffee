@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
   // Stores
   storesSection: { paddingHorizontal: Spacing.xxl, marginTop: 28 },
   storesTitle: { fontFamily: Font.displayBold, fontSize: 22, color: Colors.text, marginBottom: 14 },
-  storeCard: { backgroundColor: Colors.white, borderRadius: 14, padding: 16, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#D4A843', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  storeCard: { backgroundColor: Colors.white, borderRadius: 14, padding: 16, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#D4A843', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
   storeTop: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   storePin: { width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.greenMint, alignItems: 'center', justifyContent: 'center' },
   storeInfo: { flex: 1 },

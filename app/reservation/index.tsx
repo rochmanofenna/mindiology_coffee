@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
 
   list: { paddingHorizontal: Spacing.xxl, paddingBottom: 40 },
 
-  branchCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: Colors.white, borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
+  branchCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: Colors.white, borderRadius: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
   branchDisabled: { opacity: 0.5 },
   branchIcon: { width: 56, height: 56, borderRadius: 16, backgroundColor: Colors.greenPale, alignItems: 'center', justifyContent: 'center' },
   branchInfo: { flex: 1 },

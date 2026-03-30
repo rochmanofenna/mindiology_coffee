@@ -1,10 +1,10 @@
 // app/auth/phone.tsx — WhatsApp OTP Waiting Screen
-// After generating OTP, this screen opens WhatsApp and polls for verification
+// After generating OTP, this screen reads OTP from in-memory store and polls for verification
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, Animated, Alert,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing } from '@/constants/theme';
@@ -12,18 +12,30 @@ import { verifyOTP } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useBranch } from '@/context/BranchContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getPendingOtp, clearPendingOtp } from './welcome';
 
 export default function WhatsAppWaitingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { otp, url } = useLocalSearchParams<{ otp: string; url: string }>();
   const { login } = useAuth();
   const { currentBranchCode } = useBranch();
 
+  const [otpData, setOtpData] = useState<{ otp: string; url: string } | null>(null);
   const [status, setStatus] = useState<'opening' | 'waiting' | 'verifying' | 'verified' | 'error'>('opening');
   const [errorMsg, setErrorMsg] = useState('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Read OTP from in-memory store on mount
+  useEffect(() => {
+    const pending = getPendingOtp();
+    if (pending) {
+      setOtpData(pending);
+      clearPendingOtp();
+    } else {
+      router.back(); // no OTP data, go back
+    }
+  }, []);
 
   // Pulse animation for the WhatsApp icon
   useEffect(() => {
@@ -39,25 +51,23 @@ export default function WhatsAppWaitingScreen() {
 
   // Open WhatsApp on mount
   useEffect(() => {
-    if (url) {
-      const whatsappUrl = decodeURIComponent(url);
-      Linking.openURL(whatsappUrl).catch(() => {
-        setStatus('error');
-        setErrorMsg('Tidak bisa membuka WhatsApp. Pastikan WhatsApp terinstall.');
-      });
-      // After a short delay, start polling
-      const openTimer = setTimeout(() => setStatus('waiting'), 2000);
-      return () => clearTimeout(openTimer);
-    }
-  }, [url]);
+    if (!otpData) return;
+    Linking.openURL(otpData.url).catch(() => {
+      setStatus('error');
+      setErrorMsg('Tidak bisa membuka WhatsApp. Pastikan WhatsApp terinstall.');
+    });
+    // After a short delay, start polling
+    const openTimer = setTimeout(() => setStatus('waiting'), 2000);
+    return () => clearTimeout(openTimer);
+  }, [otpData]);
 
   // Poll for OTP verification status
   useEffect(() => {
-    if (status !== 'waiting' || !otp) return;
+    if (status !== 'waiting' || !otpData) return;
 
     const poll = async () => {
       try {
-        const result = await verifyOTP(otp);
+        const result = await verifyOTP(otpData.otp);
         if (result.status === 'VERIFIED') {
           setStatus('verifying');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -91,18 +101,17 @@ export default function WhatsAppWaitingScreen() {
       if (pollRef.current) clearInterval(pollRef.current);
       clearTimeout(timeout);
     };
-  }, [status, otp]);
+  }, [status, otpData]);
 
   const handleRetry = () => {
     router.back();
   };
 
   const handleOpenWhatsApp = () => {
-    if (url) {
-      Linking.openURL(decodeURIComponent(url)).catch(() => {
-        Alert.alert('Error', 'Tidak bisa membuka WhatsApp');
-      });
-    }
+    if (!otpData) return;
+    Linking.openURL(otpData.url).catch(() => {
+      Alert.alert('Error', 'Tidak bisa membuka WhatsApp');
+    });
   };
 
   return (

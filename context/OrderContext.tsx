@@ -71,10 +71,18 @@ export function OrderProvider({ children }: { children: ReactNode }) {
 
   // ── Persistence ───────────────────────────────────────────────────────
 
-  // Restore active orders from cache on mount
+  // Restore active orders from cache on mount, and start polling for in-progress ones
   useEffect(() => {
     cacheGet<Order[]>(ACTIVE_ORDERS_KEY).then(cached => {
-      if (cached && cached.length > 0) setActiveOrders(cached);
+      if (cached && cached.length > 0) {
+        setActiveOrders(cached);
+        // Start polling for restored orders that are still in-progress
+        cached.forEach(order => {
+          if (order.status !== 'completed' && order.status !== 'cancelled') {
+            startPolling(order);
+          }
+        });
+      }
     });
   }, []);
 
@@ -127,17 +135,6 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       pollTimers.current.delete(orderId);
     }
   }, []);
-
-  // Start polling for all restored active orders that are still in-progress
-  useEffect(() => {
-    activeOrders.forEach(order => {
-      if (order.status !== 'completed' && order.status !== 'cancelled') {
-        startPolling(order);
-      }
-    });
-    // Only run when activeOrders identity changes (not on every render)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeOrders]);
 
   // Clean up all intervals on unmount
   useEffect(() => {

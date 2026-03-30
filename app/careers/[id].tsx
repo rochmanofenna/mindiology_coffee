@@ -1,6 +1,6 @@
 // app/careers/[id].tsx — Job Detail + Apply
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -46,6 +46,7 @@ export default function JobDetailScreen() {
 
   if (showForm) {
     return (
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity style={styles.backBtn} onPress={() => setShowForm(false)}>
@@ -55,7 +56,7 @@ export default function JobDetailScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formContent}>
           {[
             { key: 'name', label: 'Nama Lengkap', placeholder: 'Masukkan nama lengkap', icon: 'person-outline' as const },
             { key: 'phone', label: 'Nomor HP', placeholder: '08xxxxxxxxxx', icon: 'call-outline' as const },
@@ -106,6 +107,7 @@ export default function JobDetailScreen() {
           </TouchableOpacity>
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     );
   }
 

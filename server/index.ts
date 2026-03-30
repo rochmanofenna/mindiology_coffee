@@ -146,10 +146,11 @@ app.post('/api/order/calculate', async (req, res) => {
 // POST /api/order
 app.post('/api/order', async (req, res) => {
   try {
-    const { branch, ...orderData } = req.body;
+    const { branch, userToken, ...orderData } = req.body;
     const data = await esb('/qsv1/order', {
       method: 'POST',
       branch,
+      userToken, // Forward user auth token if provided
       body: orderData,
     });
     // Returns: orderID, queueNum, status, transactionDate

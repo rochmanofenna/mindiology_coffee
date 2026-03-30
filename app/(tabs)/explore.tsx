@@ -303,6 +303,7 @@ export default function ExploreScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -537,7 +538,7 @@ const styles = StyleSheet.create({
   searchPrice: {
     fontFamily: Font.bold,
     fontSize: 14,
-    color: Colors.green,
+    color: Colors.greenForest,
   },
 
   // 2-column grid
@@ -586,7 +587,7 @@ const styles = StyleSheet.create({
   gridPrice: {
     fontFamily: Font.bold,
     fontSize: 14,
-    color: Colors.green,
+    color: Colors.greenForest,
   },
   miniAdd: {
     width: 26,
@@ -664,9 +665,9 @@ const styles = StyleSheet.create({
     borderLeftColor: '#D4A843',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
   storeThumbnail: {
     width: 48,

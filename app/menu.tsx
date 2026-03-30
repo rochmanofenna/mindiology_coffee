@@ -74,6 +74,8 @@ export default function MenuScreen() {
         <FlatList
           data={searchResults}
           keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           renderItem={({ item }) => (
             <MenuItemRow
               item={item}
@@ -89,7 +91,7 @@ export default function MenuScreen() {
           showsVerticalScrollIndicator={false}
         />
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: cartCount > 0 ? 160 : 40 }}>
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={{ paddingBottom: cartCount > 0 ? 160 : 40 }}>
           {/* Tab Group Chips */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
             {tabGroups.map(g => (
