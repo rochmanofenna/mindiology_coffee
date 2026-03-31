@@ -519,13 +519,12 @@ export default function CartScreen() {
         )}
 
         {/* ---- Branch Display ---- */}
-        <TouchableOpacity style={styles.branchRow} activeOpacity={0.7}>
+        <View style={styles.branchRow}>
           <Ionicons name="location" size={14} color={Colors.green} />
           <Text style={styles.branchName} numberOfLines={1}>
             {branchData?.branchName || 'Emerald Bintaro'}
           </Text>
-          <Ionicons name="chevron-forward" size={14} color={Colors.textSoft} />
-        </TouchableOpacity>
+        </View>
 
         {/* ---- Cart Items ---- */}
         <View style={styles.itemsSection}>

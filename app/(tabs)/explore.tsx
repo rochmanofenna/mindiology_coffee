@@ -2,7 +2,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, Image, ImageBackground, Dimensions, RefreshControl,
+  StyleSheet, Image, ImageBackground, Dimensions, RefreshControl, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -178,7 +178,7 @@ export default function ExploreScreen() {
       {STORES.map(store => {
         const thumbUrl = allItems.find(i => i.imageUrl)?.imageUrl;
         return (
-          <PressableCard key={store.id} style={styles.storeCard}>
+          <PressableCard key={store.id} style={styles.storeCard} onPress={() => Linking.openURL(`https://maps.google.com/?q=${store.lat},${store.lng}`)}>
             {thumbUrl ? (
               <Image source={{ uri: thumbUrl }} style={styles.storeThumbnail} />
             ) : (
@@ -191,13 +191,11 @@ export default function ExploreScreen() {
               <Text style={styles.storeAddr} numberOfLines={1}>{store.addr}</Text>
               <Text style={styles.storeHours}>{store.hours} WIB</Text>
             </View>
-            <TouchableOpacity
+            <View
               style={styles.storeNav}
-              onPress={() => {}}
-              activeOpacity={0.7}
             >
-              <Ionicons name="chevron-forward" size={16} color="#fff" />
-            </TouchableOpacity>
+              <Ionicons name="navigate-outline" size={16} color="#fff" />
+            </View>
           </PressableCard>
         );
       })}

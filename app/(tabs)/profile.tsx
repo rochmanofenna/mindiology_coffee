@@ -10,8 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SETTINGS: { label: string; icon: keyof typeof Ionicons.glyphMap; route?: string; key?: string }[] = [
   { label: 'Barcode Member', icon: 'barcode-outline', route: '/barcode', key: 'barcode' },
-  { label: 'Riwayat Pesanan', icon: 'receipt-outline' },
-  { label: 'Reservasi Saya', icon: 'calendar-outline' },
+  { label: 'Riwayat Pesanan', icon: 'receipt-outline', route: '/(tabs)/order' },
+  { label: 'Reservasi Saya', icon: 'calendar-outline', route: '/reservation' },
   { label: 'Metode Pembayaran', icon: 'card-outline' },
   { label: 'Lokasi Tersimpan', icon: 'location-outline' },
   { label: 'Notifikasi', icon: 'notifications-outline' },
@@ -55,6 +55,8 @@ export default function ProfileScreen() {
     }
     if (item.route) {
       router.push(item.route as any);
+    } else {
+      Alert.alert('Segera Hadir', 'Fitur ini akan segera tersedia.');
     }
   };
 

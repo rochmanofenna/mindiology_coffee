@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Image, Dimensions, TextInput, Animated, KeyboardAvoidingView, Platform,
+  Image, Dimensions, TextInput, Animated, KeyboardAvoidingView, Platform, Share,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -160,7 +160,13 @@ export default function ItemDetailScreen() {
           >
             <Ionicons name="chevron-back" size={22} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.navBtn} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.navBtn} activeOpacity={0.7} onPress={async () => {
+            try {
+              await Share.share({
+                message: `Coba ${item.name} di Kamarasan! ${fmtPrice(item.price)}`,
+              });
+            } catch {}
+          }}>
             <Ionicons name="share-outline" size={20} color="#fff" />
           </TouchableOpacity>
         </View>

@@ -147,10 +147,10 @@ export default function HomeScreen() {
 
   // ---------- Secondary action stagger (P13) ----------
   const secOpacities = useRef(
-    Array.from({ length: 4 }, () => new Animated.Value(0))
+    Array.from({ length: 3 }, () => new Animated.Value(0))
   ).current;
   const secTranslateYs = useRef(
-    Array.from({ length: 4 }, () => new Animated.Value(15))
+    Array.from({ length: 3 }, () => new Animated.Value(15))
   ).current;
 
   useEffect(() => {
@@ -233,10 +233,9 @@ export default function HomeScreen() {
   const branchDisplayName = STORES.find(s => s.branchCode === currentBranchCode)?.shortName || branch?.branchName || 'Mindiology';
 
   const SECONDARY_ACTIONS = [
-    { icon: 'pricetag-outline' as const, label: 'Voucher', badge: 0 },
-    { icon: 'flame-outline' as const, label: 'Daily Special', badge: 0 },
-    { icon: 'gift-outline' as const, label: 'Gift Card', badge: 0 },
-    { icon: 'receipt-outline' as const, label: 'Riwayat', badge: 3 },
+    { icon: 'pricetag-outline' as const, label: 'Voucher', badge: 0, onPress: () => router.push('/menu' as any) },
+    { icon: 'flame-outline' as const, label: 'Daily Special', badge: 0, onPress: () => router.push('/menu' as any) },
+    { icon: 'receipt-outline' as const, label: 'Riwayat', badge: 0, onPress: () => router.push('/(tabs)/order' as any) },
   ];
 
   return (
@@ -262,9 +261,6 @@ export default function HomeScreen() {
             <TouchableOpacity style={styles.headerIcon} onPress={() => router.push('/barcode' as any)}>
               <Ionicons name="barcode-outline" size={22} color={Colors.text} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerIcon}>
-              <Ionicons name="notifications-outline" size={22} color={Colors.text} />
-            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -288,7 +284,7 @@ export default function HomeScreen() {
             {PROMOS.map((promo, idx) => {
               if (bannerImages.length >= 3) {
                 return (
-                  <PressableCard key={promo.id} style={styles.bannerCardOuter} haptic>
+                  <View key={promo.id} style={styles.bannerCardOuter}>
                     <ImageBackground
                       source={{ uri: bannerImages[idx]?.imageUrl }}
                       style={styles.bannerCard}
@@ -308,11 +304,11 @@ export default function HomeScreen() {
                         ))}
                       </View>
                     </ImageBackground>
-                  </PressableCard>
+                  </View>
                 );
               }
               return (
-                <PressableCard key={promo.id} style={styles.bannerCardOuter} haptic>
+                <View key={promo.id} style={styles.bannerCardOuter}>
                   <LinearGradient colors={[...promo.colors]} style={styles.bannerCard}>
                     <Text style={styles.bannerTitle}>{promo.title}</Text>
                     <Text style={styles.bannerSub}>{promo.subtitle}</Text>
@@ -323,7 +319,7 @@ export default function HomeScreen() {
                       ))}
                     </View>
                   </LinearGradient>
-                </PressableCard>
+                </View>
               );
             })}
           </ScrollView>
@@ -401,6 +397,7 @@ export default function HomeScreen() {
                 style={styles.secondaryItem}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  item.onPress();
                 }}
               >
                 <View style={styles.secondaryIconWrap}>
@@ -450,7 +447,7 @@ export default function HomeScreen() {
 
               if (weeklyImg) {
                 return (
-                  <PressableCard key={promo.id} style={styles.weeklyCardOuter} haptic>
+                  <View key={promo.id} style={styles.weeklyCardOuter}>
                     <ImageBackground
                       source={{ uri: weeklyImg }}
                       style={styles.weeklyCard}
@@ -464,15 +461,15 @@ export default function HomeScreen() {
                         <Text style={styles.weeklyDesc}>{promo.desc}</Text>
                       </LinearGradient>
                     </ImageBackground>
-                  </PressableCard>
+                  </View>
                 );
               }
 
               return (
-                <PressableCard key={promo.id} style={[styles.weeklyCard, { backgroundColor: promo.color }]} haptic>
+                <View key={promo.id} style={[styles.weeklyCard, { backgroundColor: promo.color }]}>
                   <Text style={styles.weeklyTitle}>{promo.title}</Text>
                   <Text style={styles.weeklyDesc}>{promo.desc}</Text>
-                </PressableCard>
+                </View>
               );
             })}
           </ScrollView>
