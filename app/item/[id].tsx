@@ -98,6 +98,9 @@ export default function ItemDetailScreen() {
     });
   };
 
+  const addTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (addTimerRef.current) clearTimeout(addTimerRef.current); }, []);
+
   const handleAdd = async () => {
     if (item.soldOut) return;
     const selectedExtrasList = item.extras.flatMap(g =>
@@ -107,11 +110,10 @@ export default function ItemDetailScreen() {
     try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
     setAddedAnim(true);
     showToast();
-    const t = setTimeout(() => {
+    addTimerRef.current = setTimeout(() => {
       setAddedAnim(false);
       router.back();
     }, 600);
-    return () => clearTimeout(t);
   };
 
   return (

@@ -89,7 +89,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const extrasPrice = item.selectedExtras.reduce((s, e) => s + e.price, 0);
     return sum + (item.price + extrasPrice) * item.qty;
   }, 0);
-  const subtotalRupiah = cart.reduce((sum, item) => sum + item.apiPrice * item.qty, 0);
+  const subtotalRupiah = cart.reduce((sum, item) => sum + (item.apiPrice ?? item.price * 1000) * item.qty, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
   return (

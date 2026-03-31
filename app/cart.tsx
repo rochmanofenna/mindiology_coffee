@@ -182,10 +182,11 @@ export default function CartScreen() {
 
   // Auto-select first available payment method
   useEffect(() => {
-    if (availablePayments.length > 0 && !paymentMethod) {
-      setPaymentMethod(availablePayments[0].id);
+    const firstAvailable = PAYMENT_METHODS.find(m => m.available);
+    if (!paymentMethod && firstAvailable) {
+      setPaymentMethod(firstAvailable.id);
     }
-  }, [availablePayments]);
+  }, []);
 
   // Price calculations
   const tax = Math.round(subtotal * taxRate);

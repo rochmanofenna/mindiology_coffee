@@ -57,6 +57,7 @@ app.get('/api/branches', async (req, res) => {
     const data = await esb(`/qsv1/branch/${lat}/${lng}`);
     res.json(data);
   } catch (err: any) {
+    console.error(`[branches] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -71,6 +72,7 @@ app.get('/api/branch/settings', async (req, res) => {
     // business hours, feature flags, orderModes
     res.json(data);
   } catch (err: any) {
+    console.error(`[branch-settings] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -89,6 +91,7 @@ app.get('/api/menu', async (req, res) => {
     );
     res.json(data);
   } catch (err: any) {
+    console.error(`[menu] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -103,6 +106,7 @@ app.get('/api/menu/detail', async (req, res) => {
     );
     res.json(data);
   } catch (err: any) {
+    console.error(`[menu-detail] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -125,6 +129,7 @@ app.post('/api/order/check-items', async (req, res) => {
     res.json(data);
   } catch (err: any) {
     // 400 = "Failed to connect to outlet"
+    console.error(`[check-items] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -140,6 +145,7 @@ app.post('/api/order/calculate', async (req, res) => {
     });
     res.json(data);
   } catch (err: any) {
+    console.error(`[calculate] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -171,6 +177,7 @@ app.get('/api/order/:orderId', async (req, res) => {
     );
     res.json(data);
   } catch (err: any) {
+    console.error(`[order-track] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -184,6 +191,7 @@ app.get('/api/payment/validate/:orderId', async (req, res) => {
     );
     res.json(data);
   } catch (err: any) {
+    console.error(`[payment-validate] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -202,6 +210,7 @@ app.get('/api/vouchers', async (req, res) => {
     );
     res.json(data);
   } catch (err: any) {
+    console.error(`[vouchers] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -226,6 +235,7 @@ app.post('/api/membership/check', async (req, res) => {
     // Returns: { status: "REGISTERED" } or { status: "NOT_REGISTERED" }
     res.json(data);
   } catch (err: any) {
+    console.error(`[membership] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -245,6 +255,7 @@ app.post('/api/promotions', async (req, res) => {
     });
     res.json(data);
   } catch (err: any) {
+    console.error(`[promotions] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -260,6 +271,7 @@ app.post('/api/promotions/validate-payment', async (req, res) => {
     });
     res.json(data);
   } catch (err: any) {
+    console.error(`[promotions-validate] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -317,6 +329,7 @@ app.post('/api/auth/whatsapp/send-otp', async (req, res) => {
     if (!esbRes.ok) throw { status: esbRes.status, ...data };
     res.json(data);
   } catch (err: any) {
+    console.error(`[auth-otp] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -325,7 +338,7 @@ app.post('/api/auth/whatsapp/send-otp', async (req, res) => {
 app.post('/api/auth/whatsapp/verify', async (req, res) => {
   try {
     const { otp } = req.body;
-    console.log(`[auth] Verifying OTP: ${otp}`);
+    console.log(`[auth] Verifying OTP: ***`);
     // Use production URL for auth endpoints
     const esbRes = await fetch(`${ESB_AUTH_BASE}/customer/whatsapp/get-status-otp`, {
       method: 'POST',
@@ -343,6 +356,7 @@ app.post('/api/auth/whatsapp/verify', async (req, res) => {
     // EXPIRED  → { status: "EXPIRED" }
     res.json(data);
   } catch (err: any) {
+    console.error(`[auth-verify] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -361,6 +375,7 @@ app.get('/api/delivery/distance', async (req, res) => {
     );
     res.json(data);
   } catch (err: any) {
+    console.error(`[delivery-distance] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -376,6 +391,7 @@ app.post('/api/delivery/courier-cost', async (req, res) => {
     });
     res.json(data);
   } catch (err: any) {
+    console.error(`[courier-cost] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -394,6 +410,7 @@ app.get('/api/reservations/times', async (req, res) => {
     );
     res.json(data);
   } catch (err: any) {
+    console.error(`[reservations-times] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -409,6 +426,7 @@ app.post('/api/reservations', async (req, res) => {
     });
     res.json(data);
   } catch (err: any) {
+    console.error(`[reservations-create] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -433,6 +451,7 @@ app.post('/api/user/auth', async (req, res) => {
     if (!esbRes.ok) throw { status: esbRes.status, ...data };
     res.json(data);
   } catch (err: any) {
+    console.error(`[user-auth] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -455,6 +474,7 @@ app.post('/api/user/orders', async (req, res) => {
     if (!esbRes.ok) throw { status: esbRes.status, ...data };
     res.json(data);
   } catch (err: any) {
+    console.error(`[user-orders] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });
@@ -474,6 +494,7 @@ app.get('/api/user/addresses', async (req, res) => {
     if (!esbRes.ok) throw { status: esbRes.status, ...data };
     res.json(data);
   } catch (err: any) {
+    console.error(`[user-addresses] Error:`, err.message || err);
     res.status(err.status || 500).json(err);
   }
 });

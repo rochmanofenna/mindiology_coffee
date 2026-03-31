@@ -348,7 +348,7 @@ export default function HomeScreen() {
             { icon: 'restaurant-outline' as const, label: 'Pesan\nSekarang', onPress: () => router.push('/menu' as any), accent: true, gold: true },
             { icon: 'calendar-outline' as const, label: 'Reservasi', onPress: () => router.push('/reservation' as any), accent: false, gold: false },
             { icon: 'star-outline' as const, label: 'Rewards', onPress: () => router.push('/barcode' as any), accent: false, gold: false },
-            { icon: 'navigate-outline' as const, label: 'Lokasi\nKami', onPress: () => router.push('/profile' as any), accent: false, gold: false },
+            { icon: 'navigate-outline' as const, label: 'Lokasi\nKami', onPress: () => router.push('/(tabs)/profile' as any), accent: false, gold: false },
           ].map((action, i) => (
             <PressableCard
               key={i}
