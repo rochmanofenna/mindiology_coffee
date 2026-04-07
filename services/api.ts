@@ -284,14 +284,14 @@ export const getBranches = (lat: number, lng: number) =>
 export const getBranchSettings = (branch: string): Promise<ESBBranchSettings> =>
   api(`/api/branch/settings?branch=${branch}`);
 
-export const getMenu = (branch: string, visitPurpose: string): Promise<ESBMenuResponse> =>
-  api(`/api/menu?branch=${branch}&visitPurpose=${visitPurpose}`);
+export const getMenu = (branch: string, visitPurpose: string, memberCode?: string): Promise<ESBMenuResponse> =>
+  api(`/api/menu?branch=${branch}&visitPurpose=${visitPurpose}${memberCode ? `&memberCode=${memberCode}` : ''}`);
 
 export const getMenuDetail = (branch: string, visitPurpose: string, menuId: string) =>
   api(`/api/menu/detail?branch=${branch}&visitPurpose=${visitPurpose}&menuId=${menuId}`);
 
-export const checkItems = (branch: string, items: any[]) =>
-  api('/api/order/check-items', { body: { branch, items } });
+export const checkItems = (branch: string, salesMenus: any[], visitPurposeID?: string) =>
+  api('/api/order/check-items', { body: { branch, salesMenus, visitPurposeID: visitPurposeID || '63' } });
 
 export const calculateTotal = (branch: string, orderData: any) =>
   api('/api/order/calculate', { body: { branch, ...orderData } });
@@ -301,6 +301,9 @@ export const saveOrder = (branch: string, orderData: any, userToken?: string) =>
 
 export const getOrder = (orderId: string, branch: string) =>
   api(`/api/order/${orderId}`, { branch });
+
+export const encryptQrData = (branch: string, orderId: string) =>
+  api('/api/order/encrypt-qr-data', { body: { branch, orderID: orderId } });
 
 export const validatePayment = (orderId: string, branch: string) =>
   api(`/api/payment/validate/${orderId}`, { branch });
@@ -337,3 +340,6 @@ export const createReservation = (branch: string, data: any) =>
 
 export const getUserOrders = (userToken: string, page: number = 1) =>
   api('/api/user/orders', { body: { userToken, page } });
+
+export const registerPushToken = (phone: string, token: string) =>
+  api('/api/push/register', { body: { phone, token } });
