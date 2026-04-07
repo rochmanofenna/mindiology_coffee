@@ -1,10 +1,12 @@
 // app/(tabs)/profile.tsx — Profile Screen
+import { useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Linking, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Font, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { useOrder } from '@/context/OrderContext';
 import { STORES } from '@/constants/stores';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,12 +14,12 @@ const SETTINGS: { label: string; icon: keyof typeof Ionicons.glyphMap; route?: s
   { label: 'Barcode Member', icon: 'barcode-outline', route: '/barcode', key: 'barcode' },
   { label: 'Riwayat Pesanan', icon: 'receipt-outline', route: '/(tabs)/order' },
   { label: 'Reservasi Saya', icon: 'calendar-outline', route: '/reservation' },
-  { label: 'Metode Pembayaran', icon: 'card-outline' },
-  { label: 'Lokasi Tersimpan', icon: 'location-outline' },
-  { label: 'Notifikasi', icon: 'notifications-outline' },
-  { label: 'Ajak Teman', icon: 'gift-outline' },
+  { label: 'Metode Pembayaran', icon: 'card-outline', route: '/coming-soon?title=Metode+Pembayaran' },
+  { label: 'Lokasi Tersimpan', icon: 'location-outline', route: '/coming-soon?title=Lokasi+Tersimpan' },
+  { label: 'Notifikasi', icon: 'notifications-outline', route: '/coming-soon?title=Notifikasi' },
+  { label: 'Ajak Teman', icon: 'gift-outline', route: '/coming-soon?title=Ajak+Teman' },
   { label: 'Karir', icon: 'briefcase-outline', route: '/careers' },
-  { label: 'Bantuan', icon: 'help-circle-outline' },
+  { label: 'Bantuan', icon: 'help-circle-outline', route: '/coming-soon?title=Bantuan' },
 ];
 
 type TierKey = 'Perunggu' | 'Perak' | 'Emas';
@@ -38,8 +40,15 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { orderHistory, fetchHistory, activeOrders } = useOrder();
   const points = user?.points || 0;
   const tier: TierKey = user?.tier || 'Perunggu';
+  const orderCount = activeOrders.length + orderHistory.length;
+
+  // Fetch order history on mount if user is logged in
+  useEffect(() => {
+    if (user?.authkey) fetchHistory(user.authkey);
+  }, [user?.authkey]);
 
   const openMaps = (lat: number, lng: number, name: string) => {
     Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`);
@@ -55,8 +64,6 @@ export default function ProfileScreen() {
     }
     if (item.route) {
       router.push(item.route as any);
-    } else {
-      Alert.alert('Segera Hadir', 'Fitur ini akan segera tersedia.');
     }
   };
 
@@ -97,7 +104,7 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.stat}>
-            <Text style={styles.statNum}>{user ? '\u2014' : '0'}</Text>
+            <Text style={styles.statNum}>{user ? String(orderCount) : '0'}</Text>
             <Text style={styles.statLabel}>PESANAN</Text>
           </View>
         </View>

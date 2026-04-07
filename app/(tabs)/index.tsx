@@ -3,6 +3,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Image,
   Animated, Dimensions, Linking, ImageBackground, RefreshControl,
+  Modal, TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -76,7 +77,7 @@ function RecCard({ item, onTap, onAdd }: { item: any; onTap: () => void; onAdd: 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, updateName } = useAuth();
   const { addToCart } = useCart();
   const { loading, error, allItems, branch, menu, reload, setBranchCode, currentBranchCode } = useBranch();
 
@@ -100,6 +101,21 @@ export default function HomeScreen() {
 
   // Branch bottom sheet
   const [showBranchSheet, setShowBranchSheet] = useState(false);
+
+  // Name prompt — show once when name equals phone (ESB OTP doesn't return name)
+  const needsName = !!user && user.name === user.phone;
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  useEffect(() => {
+    if (needsName) setShowNamePrompt(true);
+  }, [needsName]);
+
+  const handleNameSubmit = async () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    await updateName(trimmed);
+    setShowNamePrompt(false);
+  };
 
   // Pull-to-refresh
   const [refreshing, setRefreshing] = useState(false);
@@ -352,7 +368,7 @@ export default function HomeScreen() {
           ].map((action, i) => (
             <PressableCard
               key={i}
-              style={[styles.gridCard, action.gold && styles.gridCardGold]}
+              style={action.gold ? [styles.gridCard, styles.gridCardGold] : styles.gridCard}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 action.onPress();
@@ -517,6 +533,36 @@ export default function HomeScreen() {
         onSelect={(store) => { setBranchCode(store.branchCode); setShowBranchSheet(false); }}
         selectedBranchCode={currentBranchCode}
       />
+
+      {/* Name prompt modal — shown once when ESB OTP didn't return a name */}
+      <Modal visible={showNamePrompt} transparent animationType="fade">
+        <View style={styles.nameOverlay}>
+          <View style={styles.nameCard}>
+            <Text style={styles.nameTitle}>Selamat Datang!</Text>
+            <Text style={styles.nameSubtitle}>Siapa nama kamu?</Text>
+            <TextInput
+              style={styles.nameInput}
+              value={nameInput}
+              onChangeText={setNameInput}
+              placeholder="Masukkan nama"
+              placeholderTextColor={Colors.textSoft + '88'}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleNameSubmit}
+            />
+            <TouchableOpacity
+              style={[styles.nameBtn, !nameInput.trim() && { opacity: 0.5 }]}
+              onPress={handleNameSubmit}
+              disabled={!nameInput.trim()}
+            >
+              <Text style={styles.nameBtnText}>Lanjutkan</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowNamePrompt(false)} style={{ marginTop: 12 }}>
+              <Text style={styles.nameSkip}>Nanti saja</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -615,4 +661,14 @@ const styles = StyleSheet.create({
   storeHoursRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   storeHours: { fontFamily: Font.semibold, fontSize: 11, color: Colors.green },
   naviBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.greenMint, alignItems: 'center', justifyContent: 'center' },
+
+  // Name prompt modal
+  nameOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+  nameCard: { backgroundColor: Colors.white, borderRadius: 20, padding: 28, width: '100%', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.15, shadowRadius: 24, elevation: 8 },
+  nameTitle: { fontFamily: Font.displayBold, fontSize: 22, color: Colors.text, marginBottom: 4 },
+  nameSubtitle: { fontFamily: Font.regular, fontSize: 14, color: Colors.textSoft, marginBottom: 20 },
+  nameInput: { width: '100%', fontFamily: Font.medium, fontSize: 16, color: Colors.text, backgroundColor: Colors.cream, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16 },
+  nameBtn: { width: '100%', backgroundColor: Colors.green, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  nameBtnText: { fontFamily: Font.bold, fontSize: 15, color: '#fff' },
+  nameSkip: { fontFamily: Font.medium, fontSize: 13, color: Colors.textSoft },
 });

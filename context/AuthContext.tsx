@@ -27,9 +27,10 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   isGuest: boolean;
-  login: (phone: string, authkey: string, branch: string) => Promise<void>;
+  login: (phone: string, authkey: string, branch: string, verifiedName?: string) => Promise<void>;
   logout: () => Promise<void>;
   setGuest: () => Promise<void>;
+  updateName: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -56,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (cachedUser && token) {
-          setUser(cachedUser);
+          setUser({ ...cachedUser, authkey: token });
         }
 
         if (guestFlag === 'true') {
@@ -68,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const login = async (phone: string, authkey: string, branch: string) => {
+  const login = async (phone: string, authkey: string, branch: string, verifiedName?: string) => {
     let memberData: any = null;
     try {
       memberData = await checkMembership(branch, phone);
@@ -81,13 +82,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const basicUser: User = {
         phone,
         authkey,
-        name: phone,
+        name: verifiedName || phone,
         memberCode: '',
         points: 0,
         tier: 'Perunggu',
       };
       setUser(basicUser);
-      await cacheSet(AUTH_USER_KEY, basicUser);
+      await cacheSet(AUTH_USER_KEY, { ...basicUser, authkey: '' });
       await SecureStore.setItemAsync('auth_token', authkey);
       return;
     }
@@ -95,14 +96,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const newUser: User = {
       phone,
       authkey,
-      name: memberData.memberName || memberData.name || phone,
+      name: memberData.memberName || memberData.name || verifiedName || phone,
       memberCode: memberData.memberCode || memberData.memberID || '',
       points: memberData.totalPoint || memberData.points || 0,
       tier: determineTier(memberData.totalPoint || 0),
     };
 
     await Promise.all([
-      cacheSet(AUTH_USER_KEY, newUser),
+      cacheSet(AUTH_USER_KEY, { ...newUser, authkey: '' }),
       SecureStore.setItemAsync('auth_token', authkey),
       storageRemove(GUEST_KEY),
     ]);
@@ -123,6 +124,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsGuest(false);
   };
 
+  const updateName = async (name: string) => {
+    if (!user) return;
+    const updated = { ...user, name };
+    setUser(updated);
+    await cacheSet(AUTH_USER_KEY, { ...updated, authkey: '' });
+  };
+
   const setGuestMode = async () => {
     await storageSet(GUEST_KEY, 'true');
     setIsGuest(true);
@@ -130,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isGuest, login, logout, setGuest: setGuestMode }}
+      value={{ user, isLoading, isGuest, login, logout, setGuest: setGuestMode, updateName }}
     >
       {children}
     </AuthContext.Provider>

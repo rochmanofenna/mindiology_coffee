@@ -4,6 +4,7 @@ import {
   getBranchSettings, getMenu, transformMenuResponse,
   type ESBBranchSettings, type AppMenuItem, type AppCategory, type AppTabGroup,
 } from '@/services/api';
+import { type PaymentMethod, PAYMENT_METHODS } from '@/constants/payments';
 import { cacheGet, cacheSet, cacheClear, MENU_TTL } from '@/utils/cache';
 
 interface BranchState {
@@ -17,6 +18,7 @@ interface BranchState {
   serviceRate: number;
   branchCode: string;
   visitPurposeID: string;
+  paymentMethods: PaymentMethod[];
   reload: () => Promise<void>;
   setBranchCode: (code: string) => void;
   currentBranchCode: string;
@@ -96,6 +98,29 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   const taxRate = (branch?.taxValue ?? 10) / 100;
   const serviceRate = (branch?.additionalTaxValue ?? 0) / 100;
 
+  // Derive payment methods from ESB branch settings, fall back to hardcoded
+  const paymentMethods: PaymentMethod[] = (() => {
+    if (!branch?.payment) return PAYMENT_METHODS;
+    const methods: PaymentMethod[] = [];
+    // Online payment methods from ESB
+    if (branch.payment.online?.length) {
+      for (const m of branch.payment.online) {
+        methods.push({
+          id: m.id,
+          name: m.name,
+          available: m.available,
+          icon: m.id === 'dana' ? 'wallet-outline' : m.id === 'ovo' ? 'wallet-outline' : m.id === 'qris' ? 'qr-code-outline' : m.id === 'shopeepay' ? 'cart-outline' : 'wallet-outline',
+          ...(!m.available ? { comingSoonText: 'Segera hadir' } : {}),
+        });
+      }
+    }
+    // Pay at cashier
+    if (branch.payment.atCashier) {
+      methods.push({ id: 'cashier', name: 'Bayar di Kasir', available: true, icon: 'cash-outline' });
+    }
+    return methods.length > 0 ? methods : PAYMENT_METHODS;
+  })();
+
   return (
     <BranchContext.Provider value={{
       loading, error, branch,
@@ -103,6 +128,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       taxRate, serviceRate,
       branchCode,
       visitPurposeID: DEFAULT_VISIT_PURPOSE,
+      paymentMethods,
       reload: load,
       setBranchCode: setBranchCodeState,
       currentBranchCode: branchCode,

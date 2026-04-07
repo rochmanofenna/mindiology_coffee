@@ -70,13 +70,21 @@ export default function WhatsAppWaitingScreen() {
         const result = await verifyOTP(otpData.otp);
         // ESB wraps response in { data: { status, verifiedPhoneNumber, authkey } }
         const otpStatus = result.data?.status || result.status;
-        const phone = result.data?.verifiedPhoneNumber || result.verifiedPhoneNumber || '';
+        const rawPhone = result.data?.verifiedPhoneNumber || result.verifiedPhoneNumber || '';
         const authkey = result.data?.authkey || result.authkey || '';
+        // ESB may return customer name alongside verification
+        const verifiedName = result.data?.customerName || result.data?.name || result.customerName || result.name || '';
+
+        // Normalize phone to 62XXXXXXXXXX format
+        const phone = rawPhone.startsWith('62') ? rawPhone
+          : rawPhone.startsWith('0') ? `62${rawPhone.slice(1)}`
+          : rawPhone.startsWith('+62') ? rawPhone.slice(1)
+          : `62${rawPhone}`;
 
         if (otpStatus === 'VERIFIED') {
           setStatus('verifying');
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          await login(phone, authkey, currentBranchCode);
+          await login(phone, authkey, currentBranchCode, verifiedName);
           setStatus('verified');
           setTimeout(() => router.replace('/'), 500);
         }
