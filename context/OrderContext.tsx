@@ -1,6 +1,6 @@
 // context/OrderContext.tsx — order tracking and history state manager
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { getOrder, getUserOrders } from '@/services/api';
+import { getOrder, getUserOrders, validatePayment } from '@/services/api';
 import { cacheGet, cacheSet, cacheClear } from '@/utils/cache';
 
 const ACTIVE_ORDERS_KEY = 'cache:active_orders';
@@ -108,6 +108,12 @@ export function OrderProvider({ children }: { children: ReactNode }) {
 
     const timer = setInterval(async () => {
       try {
+        // ESB sequence: validate payment first while order is still pending payment
+        const currentOrder = activeOrders.find(o => o.orderId === order.orderId);
+        if (!currentOrder || currentOrder.status === 'received') {
+          try { await validatePayment(order.orderId, order.branchCode); } catch { /* payment not yet confirmed — keep polling */ }
+        }
+
         const result = await getOrder(order.orderId, order.branchCode);
         const status = extractStatus(result);
         if (!status) return;

@@ -13,6 +13,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,12 +22,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing, fmtPrice } from '@/constants/theme';
 import { CONFIG } from '@/constants/config';
-import { PAYMENT_METHODS } from '@/constants/payments';
+import type { PaymentMethod } from '@/constants/payments';
 import { useBranch } from '@/context/BranchContext';
 import { useCart, type CartItem } from '@/context/CartContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { saveOrder, calculateTotal, getPromotions } from '@/services/api';
+import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPayment, encryptQrData, checkDeliveryDistance, getCourierCost } from '@/services/api';
+// Google Places autocomplete built inline — avoids broken react-native-uuid dep
+import QRCode from 'react-native-qrcode-svg';
 import { useOrder } from '@/context/OrderContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -40,6 +44,7 @@ function OrderConfirmation({
   orderMode,
   orderID,
   queueNum,
+  qrData,
   onTrack,
   onHome,
 }: {
@@ -49,6 +54,7 @@ function OrderConfirmation({
   orderMode: string;
   orderID: string;
   queueNum: string;
+  qrData?: string;
   onTrack: () => void;
   onHome: () => void;
 }) {
@@ -87,6 +93,16 @@ function OrderConfirmation({
         <View style={confirmStyles.queueBadge}>
           <Text style={confirmStyles.queueLabel}>Nomor Antrian</Text>
           <Text style={confirmStyles.queueNum}>{queueNum}</Text>
+        </View>
+      ) : null}
+
+      {/* QR Code for Pay at Cashier */}
+      {qrData ? (
+        <View style={confirmStyles.qrContainer}>
+          <Text style={confirmStyles.qrLabel}>Tunjukkan ke Kasir</Text>
+          <View style={confirmStyles.qrBox}>
+            <QRCode value={qrData} size={180} backgroundColor="#fff" color={Colors.text} />
+          </View>
         </View>
       ) : null}
 
@@ -144,8 +160,7 @@ type OrderMode = 'dineIn' | 'takeAway' | 'delivery';
 const ORDER_MODES: { key: OrderMode; label: string; icon: string }[] = [
   { key: 'dineIn', label: 'Dine In', icon: 'restaurant-outline' },
   { key: 'takeAway', label: 'Take Away', icon: 'bag-handle-outline' },
-  // Delivery hidden until delivery endpoints (distance, courier cost, addresses) are wired
-  // { key: 'delivery', label: 'Delivery', icon: 'bicycle-outline' },
+  { key: 'delivery', label: 'Delivery', icon: 'bicycle-outline' },
 ];
 
 export default function CartScreen() {
@@ -153,7 +168,7 @@ export default function CartScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { cart, updateQty, removeItem, clearCart, subtotal, subtotalRupiah } = useCart();
-  const { taxRate, serviceRate, branch: branchData, currentBranchCode } = useBranch();
+  const { taxRate, serviceRate, branch: branchData, currentBranchCode, paymentMethods: branchPaymentMethods } = useBranch();
   const { addActiveOrder } = useOrder();
 
   const [orderMode, setOrderMode] = useState<OrderMode>('takeAway');
@@ -165,7 +180,94 @@ export default function CartScreen() {
     points: number;
     orderID: string;
     queueNum: string;
+    qrData?: string;
   } | null>(null);
+
+  // Dine-in table number
+  const [tableNumber, setTableNumber] = useState('');
+
+  // Checkout retry state
+  const [retryCount, setRetryCount] = useState(0);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  // Cooldown timer
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownSeconds(prev => {
+        if (prev <= 1) { clearInterval(timer); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
+
+  // Delivery state
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryLat, setDeliveryLat] = useState<number | null>(null);
+  const [deliveryLng, setDeliveryLng] = useState<number | null>(null);
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryCourierID, setDeliveryCourierID] = useState(0);
+  const [deliveryChecked, setDeliveryChecked] = useState(false);
+  const [deliveryError, setDeliveryError] = useState('');
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [addressQuery, setAddressQuery] = useState('');
+  const [placeSuggestions, setPlaceSuggestions] = useState<Array<{ placeId: string; description: string }>>([]);
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced Google Places autocomplete search
+  const handleAddressSearch = (text: string) => {
+    setAddressQuery(text);
+    setDeliveryChecked(false);
+    setDeliveryError('');
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    if (text.length < 3) { setPlaceSuggestions([]); return; }
+
+    searchTimeout.current = setTimeout(async () => {
+      setPlacesLoading(true);
+      try {
+        const res = await fetch(
+          `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&components=country:id&language=id&key=${CONFIG.GOOGLE_PLACES_API_KEY}`
+        );
+        const data = await res.json();
+        if (data.predictions) {
+          setPlaceSuggestions(data.predictions.map((p: any) => ({
+            placeId: p.place_id,
+            description: p.description,
+          })));
+        }
+      } catch {
+        setPlaceSuggestions([]);
+      } finally {
+        setPlacesLoading(false);
+      }
+    }, 300);
+  };
+
+  // Fetch place details (lat/lng) when user selects a suggestion
+  const handlePlaceSelect = async (placeId: string, description: string) => {
+    setAddressQuery(description);
+    setPlaceSuggestions([]);
+
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${CONFIG.GOOGLE_PLACES_API_KEY}`
+      );
+      const data = await res.json();
+      const loc = data.result?.geometry?.location;
+      if (loc) {
+        handleDeliveryAddressSelect(
+          { description },
+          { geometry: { location: loc }, formatted_address: description }
+        );
+      } else {
+        setDeliveryError('Tidak bisa mendapatkan koordinat alamat.');
+      }
+    } catch {
+      setDeliveryError('Gagal memuat detail alamat.');
+    }
+  };
 
   // Payment method state
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
@@ -176,13 +278,13 @@ export default function CartScreen() {
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; discount: number; name: string } | null>(null);
   const [promoLoading, setPromoLoading] = useState(false);
 
-  // Payment methods from static config
-  const availablePayments = PAYMENT_METHODS.filter(m => m.available);
-  const comingSoonPayments = PAYMENT_METHODS.filter(m => !m.available);
+  // Payment methods from branch settings (dynamic) or hardcoded fallback
+  const availablePayments = branchPaymentMethods.filter(m => m.available);
+  const comingSoonPayments = branchPaymentMethods.filter(m => !m.available);
 
   // Auto-select first available payment method
   useEffect(() => {
-    const firstAvailable = PAYMENT_METHODS.find(m => m.available);
+    const firstAvailable = branchPaymentMethods.find(m => m.available);
     if (!paymentMethod && firstAvailable) {
       setPaymentMethod(firstAvailable.id);
     }
@@ -192,7 +294,8 @@ export default function CartScreen() {
   const tax = Math.round(subtotal * taxRate);
   const svc = Math.round(subtotal * serviceRate);
   const discount = appliedVoucher?.discount || 0;
-  const total = Math.max(0, subtotal - discount + tax + svc);
+  const deliveryFeeK = orderMode === 'delivery' ? deliveryFee / 1000 : 0;
+  const total = Math.max(0, subtotal - discount + tax + svc + deliveryFeeK);
 
   // Handlers ---------------------------------------------------------------
   const handleClearCart = () => {
@@ -222,6 +325,59 @@ export default function CartScreen() {
   const handleModeSwitch = (mode: OrderMode) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setOrderMode(mode);
+    // Reset delivery state when switching away
+    if (mode !== 'delivery') {
+      setDeliveryChecked(false);
+      setDeliveryError('');
+      setDeliveryFee(0);
+    }
+  };
+
+  const handleDeliveryAddressSelect = async (data: any, details: any) => {
+    const lat = details?.geometry?.location?.lat;
+    const lng = details?.geometry?.location?.lng;
+    const address = data.description || details?.formatted_address || '';
+
+    if (!lat || !lng) {
+      setDeliveryError('Tidak bisa mendapatkan koordinat alamat.');
+      return;
+    }
+
+    setDeliveryAddress(address);
+    setDeliveryLat(lat);
+    setDeliveryLng(lng);
+    setDeliveryLoading(true);
+    setDeliveryError('');
+    setDeliveryChecked(false);
+
+    try {
+      // Step 1: Check if address is within delivery radius
+      const distResult = await checkDeliveryDistance(currentBranchCode, lat, lng);
+      const isInRange = distResult.isInRange ?? distResult.data?.isInRange ?? distResult.inRange ?? true;
+
+      if (!isInRange) {
+        setDeliveryError('Maaf, lokasi kamu di luar jangkauan delivery. Coba pilih Take Away.');
+        setDeliveryLoading(false);
+        return;
+      }
+
+      // Step 2: Get courier cost
+      const costResult = await getCourierCost(currentBranchCode, {
+        latitude: lat,
+        longitude: lng,
+        address,
+      });
+      const fee = costResult.deliveryCost ?? costResult.data?.deliveryCost ?? costResult.cost ?? 0;
+      const courierId = costResult.courierID ?? costResult.data?.courierID ?? 0;
+
+      setDeliveryFee(fee);
+      setDeliveryCourierID(courierId);
+      setDeliveryChecked(true);
+    } catch (err: any) {
+      setDeliveryError(err?.message || 'Gagal mengecek jangkauan delivery.');
+    } finally {
+      setDeliveryLoading(false);
+    }
   };
 
   const handleApplyPromo = async () => {
@@ -263,6 +419,7 @@ export default function CartScreen() {
     try {
       let orderId: string;
       let queueNum = '';
+      let cashierQrData = '';
 
       if (CONFIG.REAL_ORDERS_ENABLED) {
         // REAL MODE: Submit to ESB (schema from Nando @ ESB)
@@ -283,13 +440,15 @@ export default function CartScreen() {
           rewardType: 'voucher',
         }));
 
-        // Step 1: Call calculate-total to get ESB-verified amount
+        const phone62 = phoneFormatted.startsWith('62') ? phoneFormatted : `62${phoneFormatted}`;
+
+        // Step 1: Calculate Total — get ESB-verified amount
         const calcPayload = {
           visitPurposeID,
           orderType: orderMode,
-          latitude: -6.287,
-          longitude: 106.716,
-          phoneNumber: phoneFormatted.startsWith('62') ? phoneFormatted : `62${phoneFormatted}`,
+          latitude: branchData?.latitude ?? -6.287,
+          longitude: branchData?.longitude ?? 106.716,
+          phoneNumber: phone62,
           salesMenus,
           promotionCode: appliedVoucher?.code || '',
           vouchers: [],
@@ -298,7 +457,7 @@ export default function CartScreen() {
           memberBenefit: null,
           memberID: user?.memberCode || '',
           userToken: user?.authkey || '',
-          deliveryCourierID: 0,
+          deliveryCourierID: orderMode === 'delivery' ? deliveryCourierID : 0,
           scheduledAt: null,
         };
 
@@ -309,18 +468,32 @@ export default function CartScreen() {
         // ESB formula: amount = grandTotal - roundingTotal (roundingTotal is negative)
         const esbAmount = grandTotal - roundingTotal;
 
-        // Step 2: Submit order with ESB-verified amount
+        // Step 2: Validate Promotion Payment (if promo applied)
+        // ESB sequence: must validate promo BEFORE check-items and save-order
+        if (appliedVoucher?.code) {
+          await validatePromoPayment(currentBranchCode, {
+            visitPurposeID,
+            promotionCode: appliedVoucher.code,
+            salesMenus,
+            paymentMethodID: paymentMethod || 'dana',
+          });
+        }
+
+        // Step 3: Check Items — verify POS outlet is online
+        await checkItems(currentBranchCode, salesMenus, visitPurposeID);
+
+        // Step 4: Save Order with ESB-verified amount
         const orderPayload = {
           orderType: orderMode,
           orderTypeName: null,
           fullName: user?.name || 'Guest',
           email: '',
-          phoneNumber: phoneFormatted,
+          phoneNumber: phone62,
           visitPurposeID,
-          deliveryAddress: '',
+          deliveryAddress: orderMode === 'delivery' ? deliveryAddress : '',
           deliveryAddressInfo: '',
-          latitude: -6.287,
-          longitude: 106.716,
+          latitude: orderMode === 'delivery' && deliveryLat ? deliveryLat : (branchData?.latitude ?? -6.287),
+          longitude: orderMode === 'delivery' && deliveryLng ? deliveryLng : (branchData?.longitude ?? 106.716),
           memberID: user?.memberCode || '',
           salesMenus,
           promotionCode: appliedVoucher?.code || '',
@@ -330,8 +503,8 @@ export default function CartScreen() {
           returnUrl: 'kamarasan://order/callback',
           refApp: null,
           userToken: user?.authkey || '',
-          paymentPhoneNumber: phoneFormatted.startsWith('62') ? phoneFormatted : `62${phoneFormatted}`,
-          tableName: null,
+          paymentPhoneNumber: phone62,
+          tableName: orderMode === 'dineIn' ? tableNumber || null : null,
           tokenID: '',
           authenticationID: '',
           cvn: '',
@@ -343,7 +516,7 @@ export default function CartScreen() {
           memberVoucher: null,
           memberBenefit: null,
           questionAnswer: [],
-          deliveryCourierID: 0,
+          deliveryCourierID: orderMode === 'delivery' ? deliveryCourierID : 0,
           scheduledAt: null,
           platformFees: [],
         };
@@ -351,6 +524,24 @@ export default function CartScreen() {
         const result = await saveOrder(currentBranchCode, orderPayload, user?.authkey);
         orderId = result.orderID || result.data?.orderID || result.id || '';
         queueNum = result.queueNum || result.data?.queueNum || '';
+
+        if (paymentMethod === 'cashier') {
+          // Pay at Cashier: get encrypted QR data for cashier to scan
+          try {
+            const qrResult = await encryptQrData(currentBranchCode, orderId);
+            cashierQrData = qrResult.encryptedData || qrResult.data?.encryptedData || qrResult.qrData || orderId;
+          } catch {
+            cashierQrData = orderId;
+          }
+        } else {
+          // Online payment: open redirect URL (DANA/Xendit)
+          const paymentUrl = result.redirectURL || result.data?.redirectURL
+            || result.redirectUrl || result.data?.redirectUrl
+            || result.paymentUrl || result.data?.paymentUrl;
+          if (paymentUrl) {
+            Linking.openURL(paymentUrl).catch(() => {});
+          }
+        }
       } else {
         // STAGING MODE: Simulate order
         await new Promise(resolve => setTimeout(resolve, CONFIG.SIMULATED_ORDER_DELAY));
@@ -378,13 +569,33 @@ export default function CartScreen() {
         points: earnedPoints,
         orderID: orderId,
         queueNum,
+        qrData: cashierQrData || undefined,
       });
       setLoading(false);
       setConfirmed(true);
     } catch (err: any) {
       setLoading(false);
-      const msg = typeof err?.message === 'string' ? err.message : 'Terjadi kesalahan';
-      Alert.alert('Gagal Memproses Pesanan', msg, [{ text: 'OK' }]);
+      const status = err?.status || err?.statusCode;
+      const msg = typeof err?.message === 'string' ? err.message : '';
+      const isRateLimit = status === 429 || msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('terlalu banyak');
+      const isServerError = status >= 500 || msg.toLowerCase().includes('internal server');
+
+      if (isRateLimit) {
+        setCooldownSeconds(30);
+        Alert.alert('Tunggu Sebentar', 'Tunggu beberapa saat sebelum memesan lagi.', [{ text: 'OK' }]);
+      } else if (isServerError) {
+        const newRetryCount = retryCount + 1;
+        setRetryCount(newRetryCount);
+        if (newRetryCount >= 3) {
+          setRetryCount(0);
+          Alert.alert('Gagal Terhubung', 'Server sedang bermasalah. Silakan coba lagi nanti.', [{ text: 'OK' }]);
+        } else {
+          setCooldownSeconds(3);
+          Alert.alert('Terjadi Kesalahan Server', `Coba lagi dalam 3 detik (percobaan ${newRetryCount}/3)`, [{ text: 'OK' }]);
+        }
+      } else {
+        Alert.alert('Gagal Memproses Pesanan', msg || 'Terjadi kesalahan', [{ text: 'OK' }]);
+      }
     }
   };
 
@@ -411,6 +622,7 @@ export default function CartScreen() {
         orderMode={orderMode}
         orderID={lastOrder.orderID}
         queueNum={lastOrder.queueNum}
+        qrData={lastOrder.qrData}
         onTrack={handleTrackOrder}
         onHome={handleGoHome}
       />
@@ -453,7 +665,7 @@ export default function CartScreen() {
   }
 
   // Determine if checkout should be disabled
-  const checkoutDisabled = cart.length === 0 || loading || (!paymentMethod && availablePayments.length > 0);
+  const checkoutDisabled = cart.length === 0 || loading || cooldownSeconds > 0 || (!paymentMethod && availablePayments.length > 0) || (orderMode === 'dineIn' && !tableNumber.trim()) || (orderMode === 'delivery' && (!deliveryChecked || !!deliveryError));
 
   // Main cart view ---------------------------------------------------------
   return (
@@ -511,6 +723,79 @@ export default function CartScreen() {
           })}
         </View>
 
+        {/* ---- Dine-In Table Number ---- */}
+        {orderMode === 'dineIn' && (
+          <View style={styles.tableRow}>
+            <Ionicons name="grid-outline" size={14} color={Colors.green} />
+            <TextInput
+              style={styles.tableInput}
+              value={tableNumber}
+              onChangeText={setTableNumber}
+              placeholder="Nomor meja (contoh: 5)"
+              placeholderTextColor={Colors.textSoft + '88'}
+              keyboardType="default"
+              returnKeyType="done"
+            />
+          </View>
+        )}
+
+        {/* ---- Delivery Address ---- */}
+        {orderMode === 'delivery' && (
+          <View style={styles.deliverySection}>
+            <Text style={styles.deliveryTitle}>Alamat Pengiriman</Text>
+            <TextInput
+              style={[styles.deliveryInput, deliveryError ? { borderColor: Colors.hibiscus } : null]}
+              value={addressQuery}
+              onChangeText={handleAddressSearch}
+              placeholder="Cari alamat..."
+              placeholderTextColor={Colors.textSoft + '88'}
+              returnKeyType="search"
+            />
+
+            {/* Autocomplete suggestions */}
+            {placeSuggestions.length > 0 && (
+              <View style={styles.suggestionsBox}>
+                {placeSuggestions.map((s) => (
+                  <TouchableOpacity
+                    key={s.placeId}
+                    style={styles.suggestionRow}
+                    onPress={() => handlePlaceSelect(s.placeId, s.description)}
+                  >
+                    <Ionicons name="location-outline" size={14} color={Colors.textSoft} />
+                    <Text style={styles.suggestionText} numberOfLines={2}>{s.description}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {placesLoading && (
+              <ActivityIndicator size="small" color={Colors.green} style={{ marginTop: 8 }} />
+            )}
+
+            {deliveryLoading && (
+              <View style={styles.deliveryStatus}>
+                <Text style={styles.deliveryStatusText}>Mengecek jangkauan...</Text>
+              </View>
+            )}
+
+            {deliveryError ? (
+              <View style={styles.deliveryErrorRow}>
+                <Ionicons name="alert-circle" size={16} color={Colors.hibiscus} />
+                <Text style={styles.deliveryErrorText}>{deliveryError}</Text>
+              </View>
+            ) : null}
+
+            {deliveryChecked && !deliveryError && (
+              <View style={styles.deliverySuccessRow}>
+                <Ionicons name="checkmark-circle" size={16} color={Colors.green} />
+                <Text style={styles.deliverySuccessText}>
+                  Ongkir: Rp {deliveryFee.toLocaleString('id-ID')}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* ---- Staging Banner ---- */}
         {!CONFIG.REAL_ORDERS_ENABLED && __DEV__ && (
           <View style={styles.stagingBanner}>
@@ -523,7 +808,7 @@ export default function CartScreen() {
         <View style={styles.branchRow}>
           <Ionicons name="location" size={14} color={Colors.green} />
           <Text style={styles.branchName} numberOfLines={1}>
-            {branchData?.branchName || 'Emerald Bintaro'}
+            {branchData?.branchName || 'Memuat...'}
           </Text>
         </View>
 
@@ -612,6 +897,14 @@ export default function CartScreen() {
                 {branchData?.additionalTaxName || 'Service'} ({Math.round(serviceRate * 100)}%)
               </Text>
               <Text style={styles.breakdownValue}>{fmtPrice(svc)}</Text>
+            </View>
+          )}
+
+          {/* Delivery fee (if delivery mode) */}
+          {orderMode === 'delivery' && deliveryFee > 0 && (
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Ongkos Kirim</Text>
+              <Text style={styles.breakdownValue}>{fmtPrice(deliveryFeeK)}</Text>
             </View>
           )}
 
@@ -725,7 +1018,7 @@ export default function CartScreen() {
             ]}
           >
             <Text style={styles.checkoutBtnText}>
-              {loading ? 'Memproses...' : `Pesan Sekarang \u2014 ${fmtPrice(total)}`}
+              {loading ? 'Memproses...' : cooldownSeconds > 0 ? `Tunggu ${cooldownSeconds}s...` : `Pesan Sekarang \u2014 ${fmtPrice(total)}`}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -815,6 +1108,24 @@ const styles = StyleSheet.create({
   modeLabelInactive: {
     color: Colors.text,
   },
+
+  // Delivery address
+  deliverySection: { paddingHorizontal: Spacing.xxl, marginBottom: 12, zIndex: 10 },
+  deliveryTitle: { fontFamily: Font.bold, fontSize: 14, color: Colors.text, marginBottom: 8 },
+  deliveryInput: { fontFamily: Font.medium, fontSize: 14, color: Colors.text, backgroundColor: Colors.white, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 14, height: 44 },
+  suggestionsBox: { backgroundColor: Colors.white, borderRadius: 12, marginTop: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 3, overflow: 'hidden' },
+  suggestionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: '#F0EBE4' },
+  suggestionText: { fontFamily: Font.regular, fontSize: 13, color: Colors.text, flex: 1 },
+  deliveryStatus: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  deliveryStatusText: { fontFamily: Font.medium, fontSize: 12, color: Colors.textSoft },
+  deliveryErrorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: '#FEF2F2', borderRadius: 8, padding: 10 },
+  deliveryErrorText: { fontFamily: Font.medium, fontSize: 12, color: Colors.hibiscus, flex: 1 },
+  deliverySuccessRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, backgroundColor: Colors.greenMint + '40', borderRadius: 8, padding: 10 },
+  deliverySuccessText: { fontFamily: Font.semibold, fontSize: 13, color: Colors.green },
+
+  // Table number (dine-in)
+  tableRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.xxl, backgroundColor: Colors.white, borderRadius: 12, paddingVertical: 6, paddingHorizontal: 14, marginBottom: 12, gap: 6, borderWidth: 1.5, borderColor: Colors.greenMint, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  tableInput: { flex: 1, fontFamily: Font.medium, fontSize: 13, color: Colors.text, paddingVertical: 6 },
 
   // Branch
   branchRow: {
@@ -1161,6 +1472,9 @@ const confirmStyles = StyleSheet.create({
     fontSize: 32,
     color: '#fff',
   },
+  qrContainer: { alignItems: 'center', marginBottom: 24, width: '100%' },
+  qrLabel: { fontFamily: Font.bold, fontSize: 14, color: Colors.textSoft, marginBottom: 12 },
+  qrBox: { backgroundColor: '#fff', borderRadius: 16, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
   receipt: {
     backgroundColor: Colors.white,
     borderRadius: 16,
