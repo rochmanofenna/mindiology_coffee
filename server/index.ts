@@ -5,10 +5,54 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// ─── Security: CORS whitelist ───
+const ALLOWED_ORIGINS = process.env.NODE_ENV === 'production'
+  ? ['https://kamarasan.app', 'https://www.kamarasan.app']
+  : undefined; // allow all in dev
+app.use(cors(ALLOWED_ORIGINS ? { origin: ALLOWED_ORIGINS } : undefined));
+app.use(helmet());
+app.use(express.json({ limit: '1mb' }));
+
+// ─── Security: Rate limiting ───
+const globalLimiter = rateLimit({ windowMs: 60_000, max: 100, standardHeaders: true, legacyHeaders: false });
+const otpLimiter = rateLimit({ windowMs: 60_000, max: 5, message: { error: true, message: 'Terlalu banyak permintaan OTP. Coba lagi nanti.' } });
+const orderLimiter = rateLimit({ windowMs: 60_000, max: 10, message: { error: true, message: 'Terlalu banyak permintaan. Coba lagi nanti.' } });
+app.use('/api/', globalLimiter);
+app.use('/api/auth/whatsapp/', otpLimiter);
+app.use('/api/order', orderLimiter);
+app.use('/api/membership/', orderLimiter);
+
+// ─── Security: Input validation helpers ───
+const PATTERNS = {
+  branch: /^[A-Za-z0-9]{1,10}$/,
+  orderId: /^[A-Za-z0-9\-]{1,40}$/,
+  menuId: /^[A-Za-z0-9\-]{1,30}$/,
+  visitPurpose: /^\d{1,5}$/,
+  latLng: /^-?\d{1,3}(\.\d{1,10})?$/,
+  date: /^\d{4}-\d{2}-\d{2}$/,
+  memberCode: /^[A-Za-z0-9]{0,30}$/,
+  otp: /^[A-Za-z0-9]{1,20}$/,
+};
+
+function validate(value: any, pattern: RegExp, name: string): string {
+  const str = String(value || '');
+  if (!pattern.test(str)) throw { status: 400, message: `Invalid ${name}` };
+  return str;
+}
+
+/** Sanitize error for client — never leak raw ESB responses */
+function safeError(err: any): { status: number; body: { error: true; message: string } } {
+  const status = typeof err?.status === 'number' && err.status >= 400 ? err.status : 500;
+  const message = typeof err?.message === 'string' && err.message.length < 200
+    ? err.message
+    : 'Terjadi kesalahan. Silakan coba lagi.';
+  return { status, body: { error: true, message } };
+}
 
 // ─── ESB Config (from OpenAPI spec) ───
 const ESB_BASE = process.env.ESB_ENV === 'staging'
@@ -53,27 +97,27 @@ const esb = async (
 // GET /api/branches?lat=-6.28&lng=106.71
 app.get('/api/branches', async (req, res) => {
   try {
-    const { lat = '-6.28', lng = '106.71' } = req.query;
+    const lat = validate(req.query.lat || '-6.28', PATTERNS.latLng, 'lat');
+    const lng = validate(req.query.lng || '106.71', PATTERNS.latLng, 'lng');
     const data = await esb(`/qsv1/branch/${lat}/${lng}`);
     res.json(data);
   } catch (err: any) {
     console.error(`[branches] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
 // GET /api/branch/settings?branch=MIND1
 app.get('/api/branch/settings', async (req, res) => {
   try {
-    const data = await esb('/qsv1/setting/branch', {
-      branch: req.query.branch as string,
-    });
-    // data includes: tax config, payment methods,
-    // business hours, feature flags, orderModes
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const data = await esb('/qsv1/setting/branch', { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[branch-settings] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -84,30 +128,33 @@ app.get('/api/branch/settings', async (req, res) => {
 // GET /api/menu?branch=MIND1&visitPurpose=65
 app.get('/api/menu', async (req, res) => {
   try {
-    const { branch, visitPurpose } = req.query;
-    const data = await esb(
-      `/qsv1/menu/${visitPurpose}`,
-      { branch: branch as string }
-    );
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const visitPurpose = validate(req.query.visitPurpose, PATTERNS.visitPurpose, 'visitPurpose');
+    const memberCode = req.query.memberCode ? validate(req.query.memberCode, PATTERNS.memberCode, 'memberCode') : '';
+    const path = memberCode
+      ? `/qsv1/menu/${visitPurpose}?memberCode=${memberCode}`
+      : `/qsv1/menu/${visitPurpose}`;
+    const data = await esb(path, { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[menu] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
 // GET /api/menu/detail?branch=MIND1&visitPurpose=65&menuId=MNU001
 app.get('/api/menu/detail', async (req, res) => {
   try {
-    const { branch, visitPurpose, menuId } = req.query;
-    const data = await esb(
-      `/qsv1/menu/detail/${visitPurpose}/${menuId}`,
-      { branch: branch as string }
-    );
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const visitPurpose = validate(req.query.visitPurpose, PATTERNS.visitPurpose, 'visitPurpose');
+    const menuId = validate(req.query.menuId, PATTERNS.menuId, 'menuId');
+    const data = await esb(`/qsv1/menu/detail/${visitPurpose}/${menuId}`, { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[menu-detail] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -120,17 +167,13 @@ app.get('/api/menu/detail', async (req, res) => {
 app.post('/api/order/check-items', async (req, res) => {
   try {
     const { branch, ...body } = req.body;
-    // ESB expects { salesMenus: [...], visitPurposeID: "63" }
-    const data = await esb('/qsv1/order/check-items', {
-      method: 'POST',
-      branch,
-      body,
-    });
+    validate(branch, PATTERNS.branch, 'branch');
+    const data = await esb('/qsv1/order/check-items', { method: 'POST', branch, body });
     res.json(data);
   } catch (err: any) {
-    // 400 = "Failed to connect to outlet"
     console.error(`[check-items] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -138,15 +181,13 @@ app.post('/api/order/check-items', async (req, res) => {
 app.post('/api/order/calculate', async (req, res) => {
   try {
     const { branch, ...orderData } = req.body;
-    const data = await esb('/qsv1/order/calculate-total', {
-      method: 'POST',
-      branch,
-      body: orderData,
-    });
+    validate(branch, PATTERNS.branch, 'branch');
+    const data = await esb('/qsv1/order/calculate-total', { method: 'POST', branch, body: orderData });
     res.json(data);
   } catch (err: any) {
     console.error(`[calculate] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -154,45 +195,57 @@ app.post('/api/order/calculate', async (req, res) => {
 app.post('/api/order', async (req, res) => {
   try {
     const { branch, ...orderData } = req.body;
-    console.log(`[order] Submitting to ESB:`, JSON.stringify(orderData, null, 2));
-    const data = await esb('/qsv1/order', {
-      method: 'POST',
-      branch,
-      body: orderData, // userToken stays in body — ESB expects it there, not as Bearer auth
-    });
-    console.log(`[order] ESB response:`, JSON.stringify(data, null, 2));
+    validate(branch, PATTERNS.branch, 'branch');
+    console.log(`[order] Submitting to ESB for branch ${branch}`);
+    const data = await esb('/qsv1/order', { method: 'POST', branch, body: orderData });
+    console.log(`[order] ESB response: orderID=${data?.orderID || data?.data?.orderID || 'unknown'}`);
     res.json(data);
   } catch (err: any) {
-    console.error(`[order] ESB error:`, JSON.stringify(err, null, 2));
-    res.status(err.status || 500).json(err);
+    console.error(`[order] ESB error:`, err.message || err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
 // GET /api/order/:orderId?branch=MIND1
 app.get('/api/order/:orderId', async (req, res) => {
   try {
-    const data = await esb(
-      `/qsv1/order/${req.params.orderId}`,
-      { branch: req.query.branch as string }
-    );
+    const orderId = validate(req.params.orderId, PATTERNS.orderId, 'orderId');
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const data = await esb(`/qsv1/order/${orderId}`, { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[order-track] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
+  }
+});
+
+// POST /api/order/encrypt-qr-data — for Pay at Cashier flow
+app.post('/api/order/encrypt-qr-data', async (req, res) => {
+  try {
+    const { branch, ...body } = req.body;
+    validate(branch, PATTERNS.branch, 'branch');
+    const data = await esb('/qsv1/order/encrypt-qr-data', { method: 'POST', branch, body });
+    res.json(data);
+  } catch (err: any) {
+    console.error(`[encrypt-qr] Error:`, err.message || err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
 // GET /api/payment/validate/:orderId?branch=MIND1
 app.get('/api/payment/validate/:orderId', async (req, res) => {
   try {
-    const data = await esb(
-      `/qsv1/payment/validate/${req.params.orderId}`,
-      { branch: req.query.branch as string }
-    );
+    const orderId = validate(req.params.orderId, PATTERNS.orderId, 'orderId');
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const data = await esb(`/qsv1/payment/validate/${orderId}`, { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[payment-validate] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -203,15 +256,14 @@ app.get('/api/payment/validate/:orderId', async (req, res) => {
 // GET /api/vouchers?branch=MIND1&memberCode=xxx
 app.get('/api/vouchers', async (req, res) => {
   try {
-    const { branch, memberCode } = req.query;
-    const data = await esb(
-      `/qsv1/membership/voucher-list?memberCode=${memberCode}`,
-      { branch: branch as string }
-    );
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const memberCode = validate(req.query.memberCode, PATTERNS.memberCode, 'memberCode');
+    const data = await esb(`/qsv1/membership/voucher-list?memberCode=${memberCode}`, { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[vouchers] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -219,8 +271,7 @@ app.get('/api/vouchers', async (req, res) => {
 app.post('/api/membership/check', async (req, res) => {
   try {
     const { branch, phoneNumber, countryCode } = req.body;
-    // ESB docs: only Data-Branch required, no Data-Company
-    // Use production URL (staging returns "Invalid authentication credentials")
+    validate(branch || DEFAULT_BRANCH, PATTERNS.branch, 'branch');
     const esbRes = await fetch(`${ESB_AUTH_BASE}/qsv1/membership/check-member-status`, {
       method: 'POST',
       headers: {
@@ -232,11 +283,11 @@ app.post('/api/membership/check', async (req, res) => {
     });
     const data = await esbRes.json();
     if (!esbRes.ok) throw { status: esbRes.status, ...data };
-    // Returns: { status: "REGISTERED" } or { status: "NOT_REGISTERED" }
     res.json(data);
   } catch (err: any) {
     console.error(`[membership] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -248,6 +299,7 @@ app.post('/api/membership/check', async (req, res) => {
 app.post('/api/promotions', async (req, res) => {
   try {
     const { branch, visitPurposeID, scheduledAt } = req.body;
+    validate(branch, PATTERNS.branch, 'branch');
     const data = await esb('/qsv1/promotion', {
       method: 'POST',
       branch,
@@ -256,7 +308,8 @@ app.post('/api/promotions', async (req, res) => {
     res.json(data);
   } catch (err: any) {
     console.error(`[promotions] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -264,15 +317,13 @@ app.post('/api/promotions', async (req, res) => {
 app.post('/api/promotions/validate-payment', async (req, res) => {
   try {
     const { branch, ...body } = req.body;
-    const data = await esb('/qsv1/promotion/validate-payment', {
-      method: 'POST',
-      branch,
-      body,
-    });
+    validate(branch, PATTERNS.branch, 'branch');
+    const data = await esb('/qsv1/promotion/validate-payment', { method: 'POST', branch, body });
     res.json(data);
   } catch (err: any) {
     console.error(`[promotions-validate] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -280,22 +331,41 @@ app.post('/api/promotions/validate-payment', async (req, res) => {
 // 6. WEBHOOKS (ESB → your server)
 // ═══════════════════════════════════════
 
+// ─── Webhook auth: verify shared secret if configured ───
+const WEBHOOK_SECRET = process.env.ESB_WEBHOOK_SECRET;
+function verifyWebhook(req: express.Request): boolean {
+  if (!WEBHOOK_SECRET) return true; // no secret configured — allow (log warning on startup)
+  const provided = req.headers['x-webhook-secret'] || req.headers['x-esb-signature'];
+  return provided === WEBHOOK_SECRET;
+}
+
 // ESB sends order updates here every 60s for 30 min
 app.post('/webhooks/esb/order', async (req, res) => {
-  const { orderID, status } = req.body;
-  // TODO: Send push notification to customer via Expo
-  // TODO: Update order status in your DB
+  if (!verifyWebhook(req)) { res.status(401).json({ error: true, message: 'Unauthorized' }); return; }
+  const { orderID, status, phoneNumber } = req.body;
   console.log(`Order ${orderID}: ${status}`);
 
-  // Return pushOrderStatus: "true" to stop retries
+  // Send push notification if we have the customer's token
+  if (phoneNumber && status) {
+    const statusLabels: Record<string, string> = {
+      processing: 'Pesanan sedang diproses',
+      ready: 'Pesanan siap diambil!',
+      completed: 'Pesanan selesai',
+      cancelled: 'Pesanan dibatalkan',
+    };
+    const label = statusLabels[status];
+    if (label) sendPushToPhone(phoneNumber, 'Kamarasan', `${label} (${orderID})`);
+  }
+
   res.json({ pushOrderStatus: "true" });
 });
 
 // ESB sends when order is ready for pickup
 app.post('/webhooks/esb/pickup', async (req, res) => {
-  const { orderID } = req.body;
-  // TODO: Send "Your order is ready!" push notification
+  if (!verifyWebhook(req)) { res.status(401).json({ error: true, message: 'Unauthorized' }); return; }
+  const { orderID, phoneNumber } = req.body;
   console.log(`Order ${orderID} ready for pickup!`);
+  if (phoneNumber) sendPushToPhone(phoneNumber, 'Kamarasan', `Pesanan ${orderID} siap diambil!`);
   res.json({ received: true });
 });
 
@@ -330,7 +400,8 @@ app.post('/api/auth/whatsapp/send-otp', async (req, res) => {
     res.json(data);
   } catch (err: any) {
     console.error(`[auth-otp] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -351,13 +422,11 @@ app.post('/api/auth/whatsapp/verify', async (req, res) => {
     });
     const data = await esbRes.json();
     if (!esbRes.ok) throw { status: esbRes.status, ...data };
-    // VERIFIED → { status: "VERIFIED", verifiedPhoneNumber, authkey }
-    // PENDING  → { status: "PENDING" }
-    // EXPIRED  → { status: "EXPIRED" }
     res.json(data);
   } catch (err: any) {
     console.error(`[auth-verify] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -368,15 +437,15 @@ app.post('/api/auth/whatsapp/verify', async (req, res) => {
 // GET /api/delivery/distance?branch=MIND1&lat=-6.28&lng=106.71
 app.get('/api/delivery/distance', async (req, res) => {
   try {
-    const { branch, lat, lng } = req.query;
-    const data = await esb(
-      `/qsv1/map/distance/${lat}/${lng}`,
-      { branch: branch as string }
-    );
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const lat = validate(req.query.lat, PATTERNS.latLng, 'lat');
+    const lng = validate(req.query.lng, PATTERNS.latLng, 'lng');
+    const data = await esb(`/qsv1/map/distance/${lat}/${lng}`, { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[delivery-distance] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -384,15 +453,13 @@ app.get('/api/delivery/distance', async (req, res) => {
 app.post('/api/delivery/courier-cost', async (req, res) => {
   try {
     const { branch, ...body } = req.body;
-    const data = await esb('/qsv1/map/delivery-courier', {
-      method: 'POST',
-      branch,
-      body,
-    });
+    validate(branch, PATTERNS.branch, 'branch');
+    const data = await esb('/qsv1/map/delivery-courier', { method: 'POST', branch, body });
     res.json(data);
   } catch (err: any) {
     console.error(`[courier-cost] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -403,15 +470,14 @@ app.post('/api/delivery/courier-cost', async (req, res) => {
 // GET /api/reservations/times?branch=MIND1&date=2026-03-10
 app.get('/api/reservations/times', async (req, res) => {
   try {
-    const { branch, date } = req.query;
-    const data = await esb(
-      `/qsv1/reservation/time?reservationDate=${date}`,
-      { branch: branch as string }
-    );
+    const branch = validate(req.query.branch, PATTERNS.branch, 'branch');
+    const date = validate(req.query.date, PATTERNS.date, 'date');
+    const data = await esb(`/qsv1/reservation/time?reservationDate=${date}`, { branch });
     res.json(data);
   } catch (err: any) {
     console.error(`[reservations-times] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -419,15 +485,13 @@ app.get('/api/reservations/times', async (req, res) => {
 app.post('/api/reservations', async (req, res) => {
   try {
     const { branch, ...body } = req.body;
-    const data = await esb('/qsv1/reservation/transaction', {
-      method: 'POST',
-      branch,
-      body,
-    });
+    validate(branch, PATTERNS.branch, 'branch');
+    const data = await esb('/qsv1/reservation/transaction', { method: 'POST', branch, body });
     res.json(data);
   } catch (err: any) {
     console.error(`[reservations-create] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -438,7 +502,6 @@ app.post('/api/reservations', async (req, res) => {
 // POST /api/user/auth
 app.post('/api/user/auth', async (req, res) => {
   try {
-    // /v1/ endpoints use production URL
     const esbRes = await fetch(`${ESB_AUTH_BASE}/v1/user/auth`, {
       method: 'POST',
       headers: {
@@ -452,7 +515,8 @@ app.post('/api/user/auth', async (req, res) => {
     res.json(data);
   } catch (err: any) {
     console.error(`[user-auth] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
@@ -460,7 +524,7 @@ app.post('/api/user/auth', async (req, res) => {
 app.post('/api/user/orders', async (req, res) => {
   try {
     const { userToken, page } = req.body;
-    // /v1/ endpoints use production URL + userToken as Bearer auth
+    if (!userToken) throw { status: 401, message: 'Missing userToken' };
     const esbRes = await fetch(`${ESB_AUTH_BASE}/v1/user/order`, {
       method: 'POST',
       headers: {
@@ -475,15 +539,16 @@ app.post('/api/user/orders', async (req, res) => {
     res.json(data);
   } catch (err: any) {
     console.error(`[user-orders] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
 
 // GET /api/user/addresses
 app.get('/api/user/addresses', async (req, res) => {
   try {
-    const userToken = req.headers['x-user-token'] as string || req.query.userToken as string;
-    // /v1/ endpoints use production URL + userToken as Bearer auth
+    const userToken = req.headers['x-user-token'] as string;
+    if (!userToken) throw { status: 401, message: 'Missing x-user-token header' };
     const esbRes = await fetch(`${ESB_AUTH_BASE}/v1/user/address`, {
       headers: {
         'Authorization': `Bearer ${userToken}`,
@@ -495,9 +560,41 @@ app.get('/api/user/addresses', async (req, res) => {
     res.json(data);
   } catch (err: any) {
     console.error(`[user-addresses] Error:`, err.message || err);
-    res.status(err.status || 500).json(err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
   }
 });
+
+// ═══════════════════════════════════════
+// 11. PUSH NOTIFICATIONS
+// ═══════════════════════════════════════
+
+// In-memory token store (replace with DB in production)
+const pushTokens = new Map<string, string>(); // phone → expoPushToken
+
+// POST /api/push/register — register device push token
+app.post('/api/push/register', (req, res) => {
+  const { phone, token } = req.body;
+  if (!phone || !token) { res.status(400).json({ error: true, message: 'Missing phone or token' }); return; }
+  pushTokens.set(phone, token);
+  console.log(`[push] Registered token for ${phone}`);
+  res.json({ success: true });
+});
+
+/** Send Expo push notification to a specific phone */
+async function sendPushToPhone(phone: string, title: string, body: string) {
+  const token = pushTokens.get(phone);
+  if (!token) return;
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: token, title, body, sound: 'default', channelId: 'orders' }),
+    });
+  } catch (err) {
+    console.error(`[push] Failed to send to ${phone}:`, err);
+  }
+}
 
 // ═══════════════════════════════════════
 // HEALTH CHECK
