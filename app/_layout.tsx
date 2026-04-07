@@ -14,6 +14,8 @@ import { ReservationProvider } from '@/context/ReservationContext';
 import { OrderProvider } from '@/context/OrderContext';
 import { Colors } from '@/constants/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { registerForPushNotifications } from '@/utils/notifications';
+import { registerPushToken } from '@/services/api';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,6 +28,14 @@ function AppNavigator() {
       router.replace('/auth/welcome');
     }
   }, [isLoading, user, isGuest]);
+
+  // Register push token when user is logged in
+  useEffect(() => {
+    if (!user?.phone) return;
+    registerForPushNotifications().then(token => {
+      if (token) registerPushToken(user.phone, token).catch(() => {});
+    }).catch(() => {});
+  }, [user?.phone]);
 
   // Prevent flash of home screen while checking auth state
   if (isLoading) return null;
@@ -100,6 +110,9 @@ function AppNavigator() {
             animation: 'slide_from_right',
           }}
         />
+        <Stack.Screen name="coming-soon" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="auth/callback" options={{ animation: 'fade' }} />
+        <Stack.Screen name="order/callback" options={{ animation: 'fade' }} />
       </Stack>
     </>
   );

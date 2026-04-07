@@ -33,7 +33,8 @@
       "expo-font",
       "expo-asset",
       "expo-brightness",
-      "expo-document-picker"
+      "expo-document-picker",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

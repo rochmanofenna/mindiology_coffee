@@ -21,7 +21,7 @@ export default function MenuScreen() {
 
   const effectiveGroup = activeGroup || (tabGroups.length > 0 ? tabGroups[0].key : null);
   const group = tabGroups.find(g => g.key === effectiveGroup);
-  const categories = group ? group.categories.map(k => ({ key: k, ...menu[k] })).filter(c => c.items) : [];
+  const categories = group ? group.categories.map(k => ({ ...menu[k], key: k })).filter(c => c.items) : [];
   const currentCat = activeSub ? categories.find(c => c.key === activeSub) : null;
 
   const searchResults = useMemo(() => {
