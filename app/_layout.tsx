@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Sentry from '@sentry/react-native';
 import { useFonts as useDMSans, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold, DMSans_800ExtraBold } from '@expo-google-fonts/dm-sans';
 import { useFonts as useFraunces, Fraunces_700Bold, Fraunces_800ExtraBold, Fraunces_900Black } from '@expo-google-fonts/fraunces';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,6 +17,21 @@ import { Colors } from '@/constants/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { registerForPushNotifications } from '@/utils/notifications';
 import { registerPushToken } from '@/services/api';
+
+// ─── Sentry: error tracking + performance monitoring ───
+// DSN is a public identifier (not a secret); env var keeps config out of source.
+// In dev, Sentry is disabled so local debugging noise doesn't pollute the dashboard.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    environment: process.env.EXPO_PUBLIC_ENV || 'production',
+    enabled: !__DEV__,
+    tracesSampleRate: 0.2,
+    // Don't send personally identifiable info by default
+    sendDefaultPii: false,
+  });
+}
 
 SplashScreen.preventAutoHideAsync();
 
@@ -118,7 +134,7 @@ function AppNavigator() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const [dmLoaded, dmError] = useDMSans({
     DMSans_400Regular,
     DMSans_500Medium,
@@ -161,3 +177,6 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+// Wrap root with Sentry for touch tracing + navigation instrumentation
+export default Sentry.wrap(RootLayout);

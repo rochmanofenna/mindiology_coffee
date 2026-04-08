@@ -1,6 +1,7 @@
 // components/ErrorBoundary.tsx — Catches unhandled errors to prevent white screen crashes
 import React, { Component, type ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import * as Sentry from '@sentry/react-native';
 import { Colors, Font, Spacing } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -23,6 +24,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     if (__DEV__) console.error('[ErrorBoundary]', error, info.componentStack);
+    // Report to Sentry in production (Sentry.init enables itself only when !__DEV__)
+    Sentry.captureException(error, {
+      contexts: { react: { componentStack: info.componentStack } },
+    });
   }
 
   handleRetry = () => {
