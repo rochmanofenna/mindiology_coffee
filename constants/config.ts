@@ -12,7 +12,7 @@ const ENV_CONFIG = {
   },
   production: {
     ESB_COMPANY_CODE: 'MBLA',
-    ESB_DEFAULT_BRANCH: 'MOOUT1',
+    ESB_DEFAULT_BRANCH: 'MCE',
     ESB_BASE_URL: 'https://eso-api.esb.co.id',
     API_BASE_URL: 'https://api.kamarasan.app',
   },

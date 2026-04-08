@@ -5,6 +5,9 @@ dist/
 *.env
 .env.local
 server/.env
+server/.env.production
+server/.env.staging
+server/.env.local
 expo-env.d.ts
 *.jks
 *.p8
