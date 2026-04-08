@@ -290,8 +290,8 @@ export const getMenu = (branch: string, visitPurpose: string, memberCode?: strin
 export const getMenuDetail = (branch: string, visitPurpose: string, menuId: string) =>
   api(`/api/menu/detail?branch=${branch}&visitPurpose=${visitPurpose}&menuId=${menuId}`);
 
-export const checkItems = (branch: string, salesMenus: any[], visitPurposeID?: string) =>
-  api('/api/order/check-items', { body: { branch, salesMenus, visitPurposeID: visitPurposeID || '63' } });
+export const checkItems = (branch: string, salesMenus: any[], visitPurposeID: string) =>
+  api('/api/order/check-items', { body: { branch, salesMenus, visitPurposeID } });
 
 export const calculateTotal = (branch: string, orderData: any) =>
   api('/api/order/calculate', { body: { branch, ...orderData } });

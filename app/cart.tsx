@@ -423,8 +423,13 @@ export default function CartScreen() {
 
       if (CONFIG.REAL_ORDERS_ENABLED) {
         // REAL MODE: Submit to ESB (schema from Nando @ ESB)
-        const visitPurposeMap: Record<string, string> = { dineIn: '65', takeAway: '63', delivery: '64' };
-        const visitPurposeID = visitPurposeMap[orderMode] || '63';
+        // Look up visit purpose ID from branch settings — production uses branch-specific IDs,
+        // NOT the staging constants (staging: 65/63/64, production MCE: 64/65/6462).
+        const modeEntry = branchData?.orderModes?.find(m => m.type === orderMode);
+        const visitPurposeID = modeEntry?.visitPurposeID;
+        if (!visitPurposeID) {
+          throw new Error(`Mode ${orderMode} tidak tersedia di cabang ini`);
+        }
         const phoneFormatted = (user?.phone || '').replace(/^\+/, '');
         const now = Date.now();
 

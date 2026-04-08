@@ -5,6 +5,7 @@ import {
   type ESBBranchSettings, type AppMenuItem, type AppCategory, type AppTabGroup,
 } from '@/services/api';
 import { type PaymentMethod, PAYMENT_METHODS } from '@/constants/payments';
+import { CONFIG } from '@/constants/config';
 import { cacheGet, cacheSet, cacheClear, MENU_TTL } from '@/utils/cache';
 
 interface BranchState {
@@ -26,11 +27,22 @@ interface BranchState {
 
 const BranchContext = createContext<BranchState | null>(null);
 
-const DEFAULT_BRANCH = 'MDOUT';
-const DEFAULT_VISIT_PURPOSE = '63'; // takeAway
+const DEFAULT_BRANCH = CONFIG.ESB_DEFAULT_BRANCH;
+// Fallback only — real visit purpose IDs come from branchData.orderModes per branch.
+// Staging uses 63/65/64; production uses different IDs (e.g. MCE: dineIn=64, takeAway=65, delivery=6462).
+const FALLBACK_VISIT_PURPOSE = '65';
+
+/** Find the visitPurposeID for a given order mode type from branch orderModes. */
+export function getVisitPurposeID(
+  branch: ESBBranchSettings | null,
+  mode: 'dineIn' | 'takeAway' | 'delivery',
+): string | null {
+  const match = branch?.orderModes?.find(m => m.type === mode);
+  return match?.visitPurposeID ?? null;
+}
 
 export function BranchProvider({ children }: { children: ReactNode }) {
-  const [branchCode, setBranchCodeState] = useState('MDOUT');
+  const [branchCode, setBranchCodeState] = useState(DEFAULT_BRANCH);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [branch, setBranch] = useState<ESBBranchSettings | null>(null);
@@ -71,17 +83,24 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const [branchData, menuData] = await Promise.all([
-        getBranchSettings(code),
-        getMenu(code, DEFAULT_VISIT_PURPOSE),
-      ]);
+      // Fetch branch settings first — needed to resolve the real visitPurposeID
+      // before fetching menu, since production uses different IDs per branch.
+      const branchData = await getBranchSettings(code);
       setBranch(branchData);
+      await cacheSet(`cache:branch_${code}`, branchData);
+
+      // Resolve menu visit purpose from branch orderModes (prefer takeAway; fall back to first).
+      const menuVp =
+        getVisitPurposeID(branchData, 'takeAway') ??
+        branchData.orderModes?.[0]?.visitPurposeID ??
+        FALLBACK_VISIT_PURPOSE;
+
+      const menuData = await getMenu(code, menuVp);
       const transformed = transformMenuResponse(menuData);
       setTabGroups(transformed.tabGroups);
       setMenu(transformed.menu);
       setAllItems(transformed.allItems);
       await cacheSet(`cache:menu_${code}`, transformed);
-      await cacheSet(`cache:branch_${code}`, branchData);
     } catch (e: any) {
       console.error('BranchProvider load error:', e);
       // Only set error if there's no cached data already showing
@@ -121,13 +140,19 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     return methods.length > 0 ? methods : PAYMENT_METHODS;
   })();
 
+  // Current menu visit purpose ID — derived from branch settings, falls back if missing.
+  const visitPurposeID =
+    getVisitPurposeID(branch, 'takeAway') ??
+    branch?.orderModes?.[0]?.visitPurposeID ??
+    FALLBACK_VISIT_PURPOSE;
+
   return (
     <BranchContext.Provider value={{
       loading, error, branch,
       tabGroups, menu, allItems,
       taxRate, serviceRate,
       branchCode,
-      visitPurposeID: DEFAULT_VISIT_PURPOSE,
+      visitPurposeID,
       paymentMethods,
       reload: load,
       setBranchCode: setBranchCodeState,
