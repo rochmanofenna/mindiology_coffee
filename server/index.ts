@@ -2,6 +2,10 @@
 // Real endpoints from ESB OpenAPI spec v3.0.3
 // Deploy: Railway ($5/mo) or Vercel Edge Functions (free)
 
+// IMPORTANT: instrument.ts must be the FIRST import so Sentry can hook
+// into Express, http, and fetch before they're loaded.
+import './instrument';
+import * as Sentry from '@sentry/node';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -51,6 +55,11 @@ function safeError(err: any): { status: number; body: { error: true; message: st
   const message = typeof err?.message === 'string' && err.message.length < 200
     ? err.message
     : 'Terjadi kesalahan. Silakan coba lagi.';
+  // Report server-side errors (5xx) to Sentry. Client errors (4xx) are
+  // expected (validation, auth, branch not found, etc.) and would only spam.
+  if (status >= 500) {
+    Sentry.captureException(err);
+  }
   return { status, body: { error: true, message } };
 }
 
@@ -602,6 +611,24 @@ async function sendPushToPhone(phone: string, title: string, body: string) {
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
+});
+
+// Verification endpoint — only available in non-production for testing Sentry wiring.
+// Hit GET /api/debug-sentry to confirm error reporting reaches the dashboard.
+if (process.env.ESB_ENV !== 'production') {
+  app.get('/api/debug-sentry', (_req, _res) => {
+    throw new Error('Sentry verification: this is an intentional test error');
+  });
+}
+
+// Sentry error handler — MUST be after all routes, before any other error middleware.
+Sentry.setupExpressErrorHandler(app);
+
+// Fallthrough error handler — sanitizes errors for the client.
+// 4-arg signature is required so Express recognizes this as an error handler.
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = typeof err?.status === 'number' && err.status >= 400 ? err.status : 500;
+  res.status(status).json({ error: true, message: 'Terjadi kesalahan. Silakan coba lagi.' });
 });
 
 const PORT = process.env.PORT || 3001;
