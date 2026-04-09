@@ -22,6 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing, fmtPrice } from '@/constants/theme';
 import { CONFIG } from '@/constants/config';
+import { titleCase } from '@/utils/formatting';
 import type { PaymentMethod } from '@/constants/payments';
 import { useBranch } from '@/context/BranchContext';
 import { useCart, type CartItem } from '@/context/CartContext';
@@ -113,7 +114,7 @@ function OrderConfirmation({
         {items.map((it, i) => (
           <View key={i} style={confirmStyles.receiptRow}>
             <Text style={confirmStyles.receiptItem}>
-              {it.qty} x {it.name}
+              {it.qty} × {titleCase(it.name)}
             </Text>
             <Text style={confirmStyles.receiptPrice}>{fmtPrice((it.price + (it.selectedExtras?.reduce((s: number, e: any) => s + e.price, 0) || 0)) * it.qty)}</Text>
           </View>
@@ -833,11 +834,11 @@ export default function CartScreen() {
               {/* Info column */}
               <View style={styles.cardInfo}>
                 <Text style={styles.cardName} numberOfLines={1}>
-                  {item.name}
+                  {titleCase(item.name)}
                 </Text>
                 {item.selectedExtras?.length > 0 && (
                   <Text style={styles.cardNotes} numberOfLines={1}>
-                    {item.selectedExtras.map(e => e.name).join(', ')}
+                    {item.selectedExtras.map(e => titleCase(e.name)).join(', ')}
                   </Text>
                 )}
                 {item.notes ? (

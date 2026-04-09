@@ -7,13 +7,15 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Font, Spacing, fmtPrice } from '@/constants/theme';
+import * as Haptics from 'expo-haptics';
+import { Colors, Font, Spacing, Radius, Shadow, fmtPrice } from '@/constants/theme';
 import { useBranch } from '@/context/BranchContext';
 import { useCart } from '@/context/CartContext';
 import { STORES } from '@/constants/stores';
 import { PressableCard } from '@/components/PressableCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
+import { titleCase } from '@/utils/formatting';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -119,28 +121,33 @@ export default function ExploreScreen() {
       style={styles.gridCard}
       onPress={() => router.push(`/item/${item.id}`)}
     >
-      {item.imageUrl ? (
-        <Image source={{ uri: item.imageUrl }} style={styles.gridImage} />
-      ) : (
-        <View style={[styles.gridImage, styles.gridImagePlaceholder]}>
-          <Ionicons name="restaurant-outline" size={28} color={Colors.greenLight} />
-        </View>
-      )}
-      {badge && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{badge}</Text>
-        </View>
-      )}
+      <View style={styles.gridImageWrap}>
+        {item.imageUrl ? (
+          <Image source={{ uri: item.imageUrl }} style={styles.gridImage} />
+        ) : (
+          <View style={styles.gridImagePlaceholder}>
+            <Ionicons name="cafe-outline" size={28} color={Colors.green} />
+          </View>
+        )}
+        {badge && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge}</Text>
+          </View>
+        )}
+      </View>
       <View style={styles.gridInfo}>
-        <Text style={styles.gridName} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.gridName} numberOfLines={2}>{titleCase(item.name)}</Text>
         <View style={styles.gridBottom}>
           <Text style={styles.gridPrice}>{fmtPrice(item.price)}</Text>
           <TouchableOpacity
             style={styles.miniAdd}
-            onPress={() => addToCart(item)}
-            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              addToCart(item);
+            }}
+            activeOpacity={0.85}
           >
-            <Ionicons name="add" size={14} color="#fff" />
+            <Ionicons name="add" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -173,34 +180,39 @@ export default function ExploreScreen() {
     </ScrollView>
   );
 
-  const renderLocations = () => (
-    <View>
-      {STORES.map(store => {
-        const thumbUrl = allItems.find(i => i.imageUrl)?.imageUrl;
-        return (
-          <PressableCard key={store.id} style={styles.storeCard} onPress={() => Linking.openURL(`https://maps.google.com/?q=${store.lat},${store.lng}`)}>
-            {thumbUrl ? (
-              <Image source={{ uri: thumbUrl }} style={styles.storeThumbnail} />
-            ) : (
-              <View style={[styles.storeThumbnail, styles.storeIconFallback]}>
-                <Ionicons name="cafe" size={22} color={Colors.green} />
+  const renderLocations = () => {
+    const withImages = allItems.filter(i => i.imageUrl);
+    return (
+      <View>
+        {STORES.map((store, storeIndex) => {
+          // Deterministic per-branch photo via modulo stride.
+          const stride = Math.max(1, Math.floor(withImages.length / STORES.length) || 1);
+          const thumbUrl = withImages[storeIndex * stride]?.imageUrl;
+          return (
+            <PressableCard key={store.id} style={styles.storeCard} onPress={() => Linking.openURL(`https://maps.google.com/?q=${store.lat},${store.lng}`)}>
+              <View style={styles.storeThumbWrap}>
+                {thumbUrl ? (
+                  <Image source={{ uri: thumbUrl }} style={styles.storeThumbnail} />
+                ) : (
+                  <View style={styles.storeIconFallback}>
+                    <Ionicons name="cafe" size={22} color={Colors.green} />
+                  </View>
+                )}
               </View>
-            )}
-            <View style={styles.storeInfo}>
-              <Text style={styles.storeName}>{store.name}</Text>
-              <Text style={styles.storeAddr} numberOfLines={1}>{store.addr}</Text>
-              <Text style={styles.storeHours}>{store.hours} WIB</Text>
-            </View>
-            <View
-              style={styles.storeNav}
-            >
-              <Ionicons name="navigate-outline" size={16} color="#fff" />
-            </View>
-          </PressableCard>
-        );
-      })}
-    </View>
-  );
+              <View style={styles.storeInfo}>
+                <Text style={styles.storeName}>{store.name}</Text>
+                <Text style={styles.storeAddr} numberOfLines={1}>{store.addr}</Text>
+                <Text style={styles.storeHours}>{store.hours} WIB</Text>
+              </View>
+              <View style={styles.storeNav}>
+                <Ionicons name="navigate-outline" size={16} color="#fff" />
+              </View>
+            </PressableCard>
+          );
+        })}
+      </View>
+    );
+  };
 
   const renderCategoryPills = () => (
     <ScrollView
@@ -213,10 +225,10 @@ export default function ExploreScreen() {
           key={tg.key}
           style={styles.categoryPill}
           onPress={() => router.push('/menu' as any)}
-          activeOpacity={0.7}
+          activeOpacity={0.85}
         >
           <Text style={styles.categoryIcon}>{tg.icon}</Text>
-          <Text style={styles.categoryLabel}>{tg.label}</Text>
+          <Text style={styles.categoryLabel}>{titleCase(tg.label)}</Text>
         </TouchableOpacity>
       ))}
     </ScrollView>
@@ -323,15 +335,17 @@ export default function ExploreScreen() {
                 style={styles.searchCard}
                 onPress={() => router.push(`/item/${item.id}`)}
               >
-                {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={styles.searchImage} />
-                ) : (
-                  <View style={[styles.searchImage, styles.searchImagePlaceholder]}>
-                    <Ionicons name="restaurant-outline" size={20} color={Colors.greenLight} />
-                  </View>
-                )}
+                <View style={styles.searchImageWrap}>
+                  {item.imageUrl ? (
+                    <Image source={{ uri: item.imageUrl }} style={styles.searchImage} />
+                  ) : (
+                    <View style={styles.searchImagePlaceholder}>
+                      <Ionicons name="cafe-outline" size={18} color={Colors.green} />
+                    </View>
+                  )}
+                </View>
                 <View style={styles.searchInfo}>
-                  <Text style={styles.searchName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.searchName} numberOfLines={1}>{titleCase(item.name)}</Text>
                   <Text style={styles.searchDesc} numberOfLines={1}>{item.desc}</Text>
                 </View>
                 <Text style={styles.searchPrice}>{fmtPrice(item.price)}</Text>
@@ -358,9 +372,9 @@ export default function ExploreScreen() {
                   )}
                 </View>
 
-                {/* Promo Aktif */}
+                {/* Promo Minggu Ini */}
                 <View style={styles.section}>
-                  <SectionHeader title="Promo Aktif" />
+                  <SectionHeader title="Promo Minggu Ini" />
                   {renderPromoCards()}
                 </View>
 
@@ -370,11 +384,11 @@ export default function ExploreScreen() {
                   {renderLocations()}
                 </View>
 
-                {/* Kategori Menu */}
+                {/* Kategori — hide "Lihat semua" if there's only one tab group (the link implies more) */}
                 <View style={styles.section}>
                   <SectionHeader
                     title="Kategori"
-                    onSeeAll={() => router.push('/menu' as any)}
+                    onSeeAll={tabGroups.length > 1 ? () => router.push('/menu' as any) : undefined}
                   />
                   {renderCategoryPills()}
                 </View>
@@ -397,7 +411,7 @@ export default function ExploreScreen() {
             {/* ===== Filter: Promo ===== */}
             {activeFilter === 'Promo' && (
               <View style={styles.section}>
-                <SectionHeader title="Promo Aktif" />
+                <SectionHeader title="Promo Minggu Ini" />
                 {renderPromoCards()}
               </View>
             )}
@@ -502,22 +516,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: Colors.white,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: 10,
     marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#F0E6D2',
+    ...Shadow.sm,
+  },
+  searchImageWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: Colors.parchment,
   },
   searchImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 10,
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   searchImagePlaceholder: {
-    backgroundColor: '#E8F0E4',
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -526,6 +546,7 @@ const styles = StyleSheet.create({
     fontFamily: Font.semibold,
     fontSize: 14,
     color: Colors.text,
+    letterSpacing: -0.1,
   },
   searchDesc: {
     fontFamily: Font.regular,
@@ -537,6 +558,7 @@ const styles = StyleSheet.create({
     fontFamily: Font.bold,
     fontSize: 14,
     color: Colors.greenForest,
+    letterSpacing: -0.2,
   },
 
   // 2-column grid
@@ -547,28 +569,35 @@ const styles = StyleSheet.create({
   },
   gridCard: {
     width: CARD_W,
-    borderRadius: 14,
+    borderRadius: Radius.md,
     overflow: 'hidden',
     backgroundColor: Colors.white,
     marginBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F0E6D2',
+    ...Shadow.card,
+  },
+  // aspect-ratio-driven image container with cream fallback
+  gridImageWrap: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: Colors.parchment,
+    overflow: 'hidden',
+    position: 'relative',
   },
   gridImage: {
-    width: CARD_W,
-    height: CARD_W,
+    width: '100%',
+    height: '100%',
     resizeMode: 'cover',
   },
   gridImagePlaceholder: {
-    backgroundColor: '#E8F0E4',
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
   gridInfo: {
-    padding: 10,
+    padding: 11,
   },
   gridName: {
     fontFamily: Font.semibold,
@@ -576,6 +605,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 17,
     marginBottom: 6,
+    letterSpacing: -0.1,
   },
   gridBottom: {
     flexDirection: 'row',
@@ -586,14 +616,20 @@ const styles = StyleSheet.create({
     fontFamily: Font.bold,
     fontSize: 14,
     color: Colors.greenForest,
+    letterSpacing: -0.2,
   },
   miniAdd: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: Colors.green,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: Colors.green,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 2,
   },
 
   // Badge
@@ -656,24 +692,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     backgroundColor: Colors.white,
-    borderRadius: 12,
+    borderRadius: Radius.md,
     padding: 14,
     marginBottom: 8,
     borderLeftWidth: 3,
-    borderLeftColor: '#D4A843',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
+    borderLeftColor: Colors.goldAccent,
+    borderWidth: 1,
+    borderColor: '#F0E6D2',
+    ...Shadow.sm,
+  },
+  storeThumbWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: Colors.parchment,
   },
   storeThumbnail: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
   },
   storeIconFallback: {
-    backgroundColor: Colors.greenPale,
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.greenMint,
     alignItems: 'center',
     justifyContent: 'center',
   },

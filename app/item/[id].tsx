@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing, fmtPrice } from '@/constants/theme';
 import { useBranch } from '@/context/BranchContext';
 import { useCart } from '@/context/CartContext';
+import { titleCase } from '@/utils/formatting';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -165,7 +166,7 @@ export default function ItemDetailScreen() {
           <TouchableOpacity style={styles.navBtn} activeOpacity={0.7} onPress={async () => {
             try {
               await Share.share({
-                message: `Coba ${item.name} di Kamarasan! ${fmtPrice(item.price)}`,
+                message: `Coba ${titleCase(item.name)} di Mindiology! ${fmtPrice(item.price)}`,
               });
             } catch {}
           }}>
@@ -182,7 +183,7 @@ export default function ItemDetailScreen() {
 
           {/* Item Info */}
           <View style={styles.infoSection}>
-            <Text style={styles.itemName}>{item.name}</Text>
+            <Text style={styles.itemName}>{titleCase(item.name)}</Text>
 
             {/* Badges */}
             <View style={styles.badges}>
@@ -222,7 +223,7 @@ export default function ItemDetailScreen() {
               <Text style={styles.sectionTitle}>Pilihan</Text>
               {item.extras.map((group, gi) => (
                 <View key={gi} style={styles.extrasGroup}>
-                  <Text style={styles.extrasGroupName}>{group.groupName}</Text>
+                  <Text style={styles.extrasGroupName}>{titleCase(group.groupName)}</Text>
                   {group.items.map(ext => {
                     const isSelected = !!selectedExtras[ext.id];
                     return (
@@ -239,7 +240,7 @@ export default function ItemDetailScreen() {
                             )}
                           </View>
                           <Text style={[styles.extraName, isSelected && styles.extraNameActive]}>
-                            {ext.name}
+                            {titleCase(ext.name)}
                           </Text>
                         </View>
                         <Text style={styles.extraPrice}>+{fmtPrice(ext.price)}</Text>

@@ -9,15 +9,17 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Colors, Font, Spacing, Radius, fmtPrice } from '@/constants/theme';
+import { Colors, Font, Spacing, Radius, Shadow, fmtPrice } from '@/constants/theme';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import { useBranch } from '@/context/BranchContext';
+import { useOrder } from '@/context/OrderContext';
 import { STORES } from '@/constants/stores';
 import { PressableCard } from '@/components/PressableCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { BranchBottomSheet } from '@/components/BranchBottomSheet';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
+import { titleCase } from '@/utils/formatting';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -40,36 +42,44 @@ const WEEKLY_PROMOS = [
 
 function RecCard({ item, onTap, onAdd }: { item: any; onTap: () => void; onAdd: () => void }) {
   const hasImage = !!item.imageUrl;
+  const addScale = useRef(new Animated.Value(1)).current;
+
+  const handleAdd = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Animated.sequence([
+      Animated.spring(addScale, { toValue: 0.88, useNativeDriver: true, speed: 60, bounciness: 0 }),
+      Animated.spring(addScale, { toValue: 1, useNativeDriver: true, speed: 30, bounciness: 10 }),
+    ]).start();
+    onAdd();
+  };
+
   return (
     <PressableCard style={styles.recCard} onPress={onTap} haptic>
-      {hasImage ? (
-        <View>
+      <View style={styles.recImageWrap}>
+        {hasImage ? (
           <Image source={{ uri: item.imageUrl }} style={styles.recImage} />
-          {item.rec && (
-            <View style={styles.recCategoryBadge}>
-              <Text style={styles.recCategoryText}>Chef Pick</Text>
-            </View>
-          )}
-        </View>
-      ) : (
-        <View style={styles.recPlaceholder}>
-          <Text style={{ fontSize: 40 }}>🍽</Text>
-        </View>
-      )}
+        ) : (
+          <View style={styles.recPlaceholder}>
+            <Ionicons name="cafe-outline" size={32} color={Colors.green} />
+          </View>
+        )}
+        {item.rec && (
+          <View style={styles.recChefBadge}>
+            <Text style={styles.recChefText}>CHEF PICK</Text>
+          </View>
+        )}
+      </View>
       <View style={styles.recInfo}>
-        <Text style={styles.recName} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.recName} numberOfLines={2}>{titleCase(item.name)}</Text>
         <View style={styles.recBottom}>
           <Text style={styles.recPrice}>{fmtPrice(item.price)}</Text>
-          <TouchableOpacity style={styles.recAddBtn} onPress={onAdd}>
-            <Ionicons name="add" size={16} color="#fff" />
-          </TouchableOpacity>
+          <Animated.View style={{ transform: [{ scale: addScale }] }}>
+            <TouchableOpacity style={styles.recAddBtn} onPress={handleAdd} activeOpacity={0.85}>
+              <Ionicons name="add" size={18} color="#fff" />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
       </View>
-      {item.rec && (
-        <View style={styles.recChefBadge}>
-          <Text style={styles.recChefText}>CHEF</Text>
-        </View>
-      )}
     </PressableCard>
   );
 }
@@ -78,6 +88,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, updateName } = useAuth();
+  const { activeOrders } = useOrder();
   const { addToCart } = useCart();
   const { loading, error, allItems, branch, menu, reload, setBranchCode, currentBranchCode } = useBranch();
 
@@ -251,7 +262,7 @@ export default function HomeScreen() {
   const SECONDARY_ACTIONS = [
     { icon: 'pricetag-outline' as const, label: 'Voucher', badge: 0, onPress: () => router.push('/menu' as any) },
     { icon: 'flame-outline' as const, label: 'Daily Special', badge: 0, onPress: () => router.push('/menu' as any) },
-    { icon: 'receipt-outline' as const, label: 'Riwayat', badge: 0, onPress: () => router.push('/(tabs)/order' as any) },
+    { icon: 'receipt-outline' as const, label: 'Riwayat', badge: activeOrders.length, onPress: () => router.push('/(tabs)/order' as any) },
   ];
 
   return (
@@ -361,23 +372,25 @@ export default function HomeScreen() {
       {animSection(3,
         <View style={styles.gridWrap}>
           {[
-            { icon: 'restaurant-outline' as const, label: 'Pesan\nSekarang', onPress: () => router.push('/menu' as any), accent: true, gold: true },
-            { icon: 'calendar-outline' as const, label: 'Reservasi', onPress: () => router.push('/reservation' as any), accent: false, gold: false },
-            { icon: 'star-outline' as const, label: 'Rewards', onPress: () => router.push('/barcode' as any), accent: false, gold: false },
-            { icon: 'navigate-outline' as const, label: 'Lokasi\nKami', onPress: () => router.push('/(tabs)/profile' as any), accent: false, gold: false },
+            { icon: 'restaurant-outline' as const, label: 'Pesan\nSekarang', onPress: () => router.push('/menu' as any), primary: true },
+            { icon: 'calendar-outline' as const, label: 'Reservasi', onPress: () => router.push('/reservation' as any), primary: false },
+            { icon: 'star-outline' as const, label: 'Rewards', onPress: () => router.push('/barcode' as any), primary: false },
+            { icon: 'navigate-outline' as const, label: 'Lokasi\nKami', onPress: () => router.push('/(tabs)/profile' as any), primary: false },
           ].map((action, i) => (
             <PressableCard
               key={i}
-              style={action.gold ? [styles.gridCard, styles.gridCardGold] : styles.gridCard}
+              style={action.primary ? [styles.gridCard, styles.gridCardPrimary] : [styles.gridCard, styles.gridCardSecondary]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                 action.onPress();
               }}
               haptic
             >
-              {action.accent ? (
+              {action.primary ? (
                 <LinearGradient
                   colors={[Colors.green, Colors.greenDeep]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
                   style={styles.gridCardAccentGradient}
                 >
                   <View style={styles.gridIconAccent}>
@@ -398,9 +411,13 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* ====== Section 4: Secondary Action Row ====== */}
+      {/* ====== Section 4: Secondary Action Row (pill chips) ====== */}
       {animSection(4,
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.secondaryRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsRow}
+        >
           {SECONDARY_ACTIONS.map((item, i) => (
             <Animated.View
               key={i}
@@ -410,21 +427,20 @@ export default function HomeScreen() {
               }}
             >
               <TouchableOpacity
-                style={styles.secondaryItem}
+                style={styles.chip}
+                activeOpacity={0.85}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                   item.onPress();
                 }}
               >
-                <View style={styles.secondaryIconWrap}>
-                  <Ionicons name={item.icon} size={20} color={Colors.green} />
-                  {item.badge > 0 && (
-                    <Animated.View style={[styles.badgeDot, { transform: [{ scale: badgeScale }] }]}>
-                      <Text style={styles.badgeText}>{item.badge}</Text>
-                    </Animated.View>
-                  )}
-                </View>
-                <Text style={styles.secondaryLabel}>{item.label}</Text>
+                <Ionicons name={item.icon} size={16} color={Colors.greenDeep} style={styles.chipIcon} />
+                <Text style={styles.chipLabel}>{item.label}</Text>
+                {item.badge > 0 && (
+                  <Animated.View style={[styles.chipBadge, { transform: [{ scale: badgeScale }] }]}>
+                    <Text style={styles.chipBadgeText}>{item.badge}</Text>
+                  </Animated.View>
+                )}
               </TouchableOpacity>
             </Animated.View>
           ))}
@@ -497,28 +513,38 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <SectionHeader title="Kunjungi Kami" />
           {STORES.map((store, storeIndex) => {
-            const storeThumb = storeImages[storeIndex * 5]?.imageUrl;
+            // Distribute menu item photos across branches deterministically
+            // so each branch gets its own distinctive thumbnail that doesn't
+            // change on every render (using a simple modulo stride).
+            const stride = Math.max(1, Math.floor(storeImages.length / STORES.length) || 1);
+            const storeThumb = storeImages[storeIndex * stride]?.imageUrl;
             return (
-            <PressableCard key={store.id} style={styles.storeCard} onPress={() => Linking.openURL(`https://maps.google.com/?q=${store.lat},${store.lng}`)}>
-              {storeThumb ? (
-                <Image source={{ uri: storeThumb }} style={styles.storeThumb} />
-              ) : (
-                <View style={styles.storeImagePlaceholder}>
-                  <Ionicons name="cafe" size={24} color={Colors.green} />
+              <PressableCard
+                key={store.id}
+                style={styles.storeCard}
+                onPress={() => Linking.openURL(`https://maps.google.com/?q=${store.lat},${store.lng}`)}
+              >
+                <View style={styles.storeThumbWrap}>
+                  {storeThumb ? (
+                    <Image source={{ uri: storeThumb }} style={styles.storeThumb} />
+                  ) : (
+                    <View style={styles.storeImagePlaceholder}>
+                      <Ionicons name="cafe" size={22} color={Colors.green} />
+                    </View>
+                  )}
                 </View>
-              )}
-              <View style={styles.storeInfo}>
-                <Text style={styles.storeName}>{store.name}</Text>
-                <Text style={styles.storeAddr} numberOfLines={1}>{store.addr}</Text>
-                <View style={styles.storeHoursRow}>
-                  <Ionicons name="time-outline" size={11} color={Colors.green} />
-                  <Text style={styles.storeHours}>{store.hours} WIB</Text>
+                <View style={styles.storeInfo}>
+                  <Text style={styles.storeName}>{store.name}</Text>
+                  <Text style={styles.storeAddr} numberOfLines={1}>{store.addr}</Text>
+                  <View style={styles.storeHoursRow}>
+                    <Ionicons name="time-outline" size={11} color={Colors.green} />
+                    <Text style={styles.storeHours}>{store.hours} WIB</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.naviBtn}>
-                <Ionicons name="navigate-outline" size={16} color={Colors.green} />
-              </View>
-            </PressableCard>
+                <View style={styles.naviBtn}>
+                  <Ionicons name="navigate-outline" size={16} color={Colors.green} />
+                </View>
+              </PressableCard>
             );
           })}
         </View>
@@ -609,40 +635,177 @@ const styles = StyleSheet.create({
   pointsPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.parchment, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   pointsText: { fontFamily: Font.extrabold, fontSize: 11, color: Colors.gold },
 
-  // Grid
-  gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: Spacing.xxl, marginBottom: 20 },
-  gridCard: { width: (SCREEN_W - 48 - 10) / 2, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, overflow: 'hidden' },
-  gridCardGold: { shadowColor: '#2D6A4F', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 5 },
-  gridCardAccentGradient: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center', borderRadius: 16, paddingVertical: 10, paddingHorizontal: 16, marginVertical: -10, marginHorizontal: -16 },
-  gridIconWrap: { width: 40, height: 40, borderRadius: 14, backgroundColor: Colors.greenPale, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  gridIconAccent: { width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  gridLabel: { fontFamily: Font.semibold, fontSize: 11, color: Colors.text, textAlign: 'center', lineHeight: 16 },
+  // Grid — 2×2 with the primary CTA as the only filled tile
+  gridWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingHorizontal: Spacing.xxl,
+    marginBottom: 24,
+  },
+  gridCard: {
+    width: (SCREEN_W - 48 - 10) / 2,
+    height: 96,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  gridCardPrimary: {
+    shadowColor: Colors.green,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  gridCardSecondary: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#E8E0D6',
+    ...Shadow.sm,
+  },
+  gridCardAccentGradient: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.lg,
+  },
+  gridIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: Colors.greenMint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  gridIconAccent: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  gridLabel: {
+    fontFamily: Font.semibold,
+    fontSize: 13,
+    color: Colors.greenDeep,
+    textAlign: 'center',
+    lineHeight: 17,
+    letterSpacing: 0.1,
+  },
 
-  // Secondary row
-  secondaryRow: { gap: 16, paddingHorizontal: Spacing.xxl, marginBottom: 28 },
-  secondaryItem: { alignItems: 'center', width: 64 },
-  secondaryIconWrap: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', marginBottom: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 1 },
-  secondaryLabel: { fontFamily: Font.medium, fontSize: 10, color: Colors.textSoft, textAlign: 'center' },
-  badgeDot: { position: 'absolute', top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: Colors.badgeRed, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  badgeText: { fontFamily: Font.bold, fontSize: 9, color: '#fff' },
+  // Pill chips row — replaces the old circle icon row
+  chipsRow: {
+    gap: 10,
+    paddingHorizontal: Spacing.xxl,
+    marginBottom: 28,
+    alignItems: 'center',
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md + 2,
+    paddingVertical: 10,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#E8E0D6',
+    ...Shadow.sm,
+  },
+  chipIcon: {
+    marginRight: 6,
+  },
+  chipLabel: {
+    fontFamily: Font.semibold,
+    fontSize: 13,
+    color: Colors.greenDeep,
+    letterSpacing: 0.1,
+  },
+  chipBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    marginLeft: 7,
+    backgroundColor: Colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipBadgeText: {
+    fontFamily: Font.bold,
+    fontSize: 10,
+    color: '#fff',
+  },
 
   // Sections
   section: { paddingHorizontal: Spacing.xxl, marginBottom: 28 },
 
   // Rec cards
   recScroll: { gap: 12, paddingRight: 24 },
-  recCard: { width: 160, height: 220, borderRadius: 14, overflow: 'hidden', backgroundColor: Colors.white, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
-  recImage: { width: '100%', height: 130, resizeMode: 'cover' },
-  recPlaceholder: { width: '100%', height: 130, backgroundColor: '#E8F0E4', alignItems: 'center', justifyContent: 'center' },
-  recInfo: { padding: 10, flex: 1, justifyContent: 'space-between' },
-  recName: { fontFamily: Font.semibold, fontSize: 13, color: Colors.text, lineHeight: 17 },
+  recCard: {
+    width: 164,
+    height: 232,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#F0E6D2',
+    ...Shadow.card,
+  },
+  recImageWrap: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: Colors.parchment,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  recImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  recPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recInfo: { padding: 11, flex: 1, justifyContent: 'space-between' },
+  recName: { fontFamily: Font.semibold, fontSize: 13, color: Colors.text, lineHeight: 17, letterSpacing: -0.1 },
   recBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  recPrice: { fontFamily: Font.bold, fontSize: 14, color: Colors.greenForest },
-  recAddBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.green, alignItems: 'center', justifyContent: 'center' },
-  recChefBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(255,255,255,0.92)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 },
-  recChefText: { fontFamily: Font.extrabold, fontSize: 8, color: Colors.green, letterSpacing: 0.5 },
-  recCategoryBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(27,94,59,0.85)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  recCategoryText: { fontFamily: Font.bold, fontSize: 9, color: '#fff', letterSpacing: 0.3 },
+  recPrice: { fontFamily: Font.bold, fontSize: 14, color: Colors.greenForest, letterSpacing: -0.2 },
+  recAddBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.green,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  recChefBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(253, 246, 236, 0.95)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  recChefText: {
+    fontFamily: Font.extrabold,
+    fontSize: 8,
+    color: Colors.green,
+    letterSpacing: 0.6,
+  },
 
   // Weekly promos
   weeklyCardOuter: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 6 },
@@ -652,11 +815,37 @@ const styles = StyleSheet.create({
   weeklyDesc: { fontFamily: Font.regular, fontSize: 12, color: 'rgba(255,255,255,0.8)' },
 
   // Stores
-  storeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.white, borderRadius: 14, padding: 12, marginBottom: 10, borderLeftWidth: 3, borderLeftColor: '#D4A843', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
-  storeImagePlaceholder: { width: 64, height: 64, borderRadius: 12, backgroundColor: Colors.greenPale, alignItems: 'center', justifyContent: 'center' },
-  storeThumb: { width: 64, height: 64, borderRadius: 12, resizeMode: 'cover' },
+  storeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    padding: 12,
+    marginBottom: 10,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.goldAccent,
+    borderWidth: 1,
+    borderColor: '#F0E6D2',
+    ...Shadow.sm,
+  },
+  storeThumbWrap: {
+    width: 68,
+    height: 68,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: Colors.parchment,
+  },
+  storeImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.greenMint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storeThumb: { width: '100%', height: '100%', resizeMode: 'cover' },
   storeInfo: { flex: 1 },
-  storeName: { fontFamily: Font.bold, fontSize: 13, color: Colors.text, marginBottom: 2 },
+  storeName: { fontFamily: Font.bold, fontSize: 13, color: Colors.text, marginBottom: 2, letterSpacing: -0.1 },
   storeAddr: { fontFamily: Font.regular, fontSize: 11, color: Colors.textSoft, marginBottom: 4 },
   storeHoursRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   storeHours: { fontFamily: Font.semibold, fontSize: 11, color: Colors.green },

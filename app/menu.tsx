@@ -8,6 +8,7 @@ import { useBranch } from '@/context/BranchContext';
 import { useCart } from '@/context/CartContext';
 import { MenuItemRow } from '@/components/MenuItemRow';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
+import { titleCase } from '@/utils/formatting';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MenuScreen() {
@@ -101,7 +102,7 @@ export default function MenuScreen() {
                 onPress={() => { setActiveGroup(g.key); setActiveSub(null); }}
               >
                 <Text style={[styles.tabChipText, effectiveGroup === g.key && styles.tabChipTextActive]}>
-                  {g.icon} {g.label}
+                  {g.icon} {titleCase(g.label)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -124,7 +125,7 @@ export default function MenuScreen() {
                     </View>
                   )}
                   <View style={styles.catInfo}>
-                    <Text style={styles.catName}>{cat.label}</Text>
+                    <Text style={styles.catName}>{titleCase(cat.label)}</Text>
                     <Text style={styles.catCount}>{cat.items.length} item</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={Colors.brownLight} />
@@ -135,7 +136,7 @@ export default function MenuScreen() {
             <View style={styles.catList}>
               <TouchableOpacity style={styles.catBackBtn} onPress={() => setActiveSub(null)}>
                 <Ionicons name="chevron-back" size={18} color={Colors.green} />
-                <Text style={styles.catBackText}>{currentCat?.label}</Text>
+                <Text style={styles.catBackText}>{titleCase(currentCat?.label || '')}</Text>
                 <Text style={styles.catBackCount}>{currentCat?.items.length} item</Text>
               </TouchableOpacity>
               {currentCat?.items.map(item => (
