@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font } from '@/constants/theme';
 import { useCart } from '@/context/CartContext';
+import { useOrder } from '@/context/OrderContext';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,6 +22,8 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { cartCount } = useCart();
+  const { activeOrders } = useOrder();
+  const hasActiveOrders = activeOrders.length > 0;
 
   // Breathing glow for center button
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -125,6 +128,8 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
           );
         }
 
+        const showOrderDot = tab.name === 'order' && hasActiveOrders;
+
         elements.unshift(
           <TouchableOpacity
             key={tab.name}
@@ -138,6 +143,7 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                 size={22}
                 color={isFocused ? Colors.greenForest : '#9CA3AF'}
               />
+              {showOrderDot && <View style={styles.orderDot} />}
             </Animated.View>
             <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>
               {tab.label}
@@ -212,5 +218,18 @@ const styles = StyleSheet.create({
     fontFamily: Font.bold,
     fontSize: 9,
     color: '#fff',
+  },
+  // Peripheral-awareness dot for active orders on the Order tab icon.
+  // Not a count — presence only. Sits above the icon, slightly right of center.
+  orderDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.green,
+    borderWidth: 1.5,
+    borderColor: Colors.cream,
   },
 });
