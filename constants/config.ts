@@ -14,7 +14,7 @@ const ENV_CONFIG = {
     ESB_COMPANY_CODE: 'MBLA',
     ESB_DEFAULT_BRANCH: 'MCE',
     ESB_BASE_URL: 'https://eso-api.esb.co.id',
-    API_BASE_URL: 'https://api.kamarasan.app',
+    API_BASE_URL: 'https://mindiologycoffee-production.up.railway.app',
   },
 };
 

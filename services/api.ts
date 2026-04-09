@@ -2,8 +2,15 @@
 // All ESB calls go through your middleware (server/index.ts)
 import Constants from 'expo-constants';
 
+// Production middleware hosted on Railway. Can be overridden at build time
+// via EXPO_PUBLIC_API_URL in eas.json, or in .env for local testing.
+const PRODUCTION_API_URL = 'https://mindiologycoffee-production.up.railway.app';
+
 function getApiBase(): string {
-  if (!__DEV__) return 'https://api.kamarasan.app';
+  // Explicit override always wins (works in both dev and prod)
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+
+  if (!__DEV__) return PRODUCTION_API_URL;
 
   // In dev, derive middleware URL from Expo's dev server host
   const debuggerHost =
