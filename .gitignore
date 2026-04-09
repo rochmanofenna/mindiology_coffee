@@ -18,3 +18,4 @@ expo-env.d.ts
 web-build/
 .DS_Store
 *.tsbuildinfo
+assets/.backup/

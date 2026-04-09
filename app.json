@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Kamarasan",
+    "name": "Mindiology",
     "slug": "kamarasan-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -18,7 +18,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.kamarasan.app",
-      "buildNumber": "1"
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +28,10 @@
         "backgroundColor": "#1B5E3B"
       },
       "package": "com.kamarasan.app",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.WRITE_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -38,6 +43,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "60833423-495f-4ca8-b039-a474e9980f97"
+      }
     }
   }
 }
