@@ -11,7 +11,8 @@
       },
       "env": {
         "EXPO_PUBLIC_ENV": "staging",
-        "EXPO_PUBLIC_GOOGLE_PLACES_KEY": ""
+        "EXPO_PUBLIC_GOOGLE_PLACES_KEY": "",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
       }
     },
     "preview": {
@@ -21,7 +22,8 @@
       },
       "env": {
         "EXPO_PUBLIC_ENV": "staging",
-        "EXPO_PUBLIC_GOOGLE_PLACES_KEY": ""
+        "EXPO_PUBLIC_GOOGLE_PLACES_KEY": "",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
       }
     },
     "production": {
@@ -36,7 +38,8 @@
         "EXPO_PUBLIC_ENV": "production",
         "EXPO_PUBLIC_API_URL": "https://mindiologycoffee-production.up.railway.app",
         "EXPO_PUBLIC_SENTRY_DSN": "https://01017b23523fdcbb6da00dcf65f51e4b@o4511183339388928.ingest.de.sentry.io/4511183371173968",
-        "EXPO_PUBLIC_GOOGLE_PLACES_KEY": ""
+        "EXPO_PUBLIC_GOOGLE_PLACES_KEY": "",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
       }
     }
   },
