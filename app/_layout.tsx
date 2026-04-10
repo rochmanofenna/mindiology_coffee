@@ -15,8 +15,12 @@ import { ReservationProvider } from '@/context/ReservationContext';
 import { OrderProvider } from '@/context/OrderContext';
 import { Colors } from '@/constants/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import * as WebBrowser from 'expo-web-browser';
 import { registerForPushNotifications } from '@/utils/notifications';
 import { registerPushToken } from '@/services/api';
+
+// Warm up the in-app browser for faster WhatsApp OTP flow
+WebBrowser.warmUpAsync().catch(() => {});
 
 // ─── Sentry: error tracking + performance monitoring ───
 // DSN is a public identifier (not a secret); env var keeps config out of source.

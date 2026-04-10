@@ -1,18 +1,20 @@
 // app/auth/phone.tsx — WhatsApp OTP Waiting Screen
-// After generating OTP, this screen reads OTP from in-memory store and polls for verification
+// Opens WhatsApp in-app via SafariViewController (Apple Guideline 4 compliant)
+// Polls ESB for OTP verification status using shared utility
 import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, Animated, Alert,
+  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Animated, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
 import { Colors, Font, Spacing } from '@/constants/theme';
-import { verifyOTP } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useBranch } from '@/context/BranchContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPendingOtp, clearPendingOtp } from './welcome';
+import { pollVerification } from '@/utils/otpPolling';
 
 export default function WhatsAppWaitingScreen() {
   const insets = useSafeAreaInsets();
@@ -24,7 +26,7 @@ export default function WhatsAppWaitingScreen() {
   const [status, setStatus] = useState<'opening' | 'waiting' | 'verifying' | 'verified' | 'error'>('opening');
   const [errorMsg, setErrorMsg] = useState('');
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortRef = useRef<(() => void) | null>(null);
 
   // Read OTP from in-memory store on mount
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function WhatsAppWaitingScreen() {
       setOtpData(pending);
       clearPendingOtp();
     } else {
-      router.back(); // no OTP data, go back
+      router.back();
     }
   }, []);
 
@@ -49,88 +51,75 @@ export default function WhatsAppWaitingScreen() {
     return () => anim.stop();
   }, []);
 
-  // Open WhatsApp on mount
+  // Open WhatsApp in-app and start polling
   useEffect(() => {
     if (!otpData) return;
-    Linking.openURL(otpData.url).catch(() => {
-      setStatus('error');
-      setErrorMsg('Tidak bisa membuka WhatsApp. Pastikan WhatsApp terinstall.');
-    });
-    // After a short delay, start polling
-    const openTimer = setTimeout(() => setStatus('waiting'), 2000);
-    return () => clearTimeout(openTimer);
-  }, [otpData]);
 
-  // Poll for OTP verification status
-  useEffect(() => {
-    if (status !== 'waiting' || !otpData) return;
+    let mounted = true;
 
-    const poll = async () => {
+    (async () => {
+      // Open wa.me URL in SafariViewController (stays in-app per Apple Guideline 4)
       try {
-        const result = await verifyOTP(otpData.otp);
-        // ESB wraps response in { data: { status, verifiedPhoneNumber, authkey } }
-        const otpStatus = result.data?.status || result.status;
-        const rawPhone = result.data?.verifiedPhoneNumber || result.verifiedPhoneNumber || '';
-        const authkey = result.data?.authkey || result.authkey || '';
-        // ESB may return customer name alongside verification
-        const verifiedName = result.data?.customerName || result.data?.name || result.customerName || result.name || '';
-
-        // Normalize phone to 62XXXXXXXXXX format
-        const phone = rawPhone.startsWith('62') ? rawPhone
-          : rawPhone.startsWith('0') ? `62${rawPhone.slice(1)}`
-          : rawPhone.startsWith('+62') ? rawPhone.slice(1)
-          : `62${rawPhone}`;
-
-        if (otpStatus === 'VERIFIED') {
-          setStatus('verifying');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          await login(phone, authkey, currentBranchCode, verifiedName);
-          setStatus('verified');
-          setTimeout(() => router.replace('/'), 500);
-        }
-        if (otpStatus === 'EXPIRED') {
-          setStatus('error');
-          setErrorMsg('Kode OTP sudah kadaluarsa. Silakan coba lagi.');
-          if (pollRef.current) clearInterval(pollRef.current);
-        }
+        await WebBrowser.openAuthSessionAsync(
+          otpData.url,
+          'kamarasan://auth/callback',
+        );
       } catch {
-        // Network error during poll — keep trying
+        // User may have dismissed the browser — polling will still catch VERIFIED
       }
-    };
 
-    // Poll every 3 seconds
-    poll(); // check immediately
-    pollRef.current = setInterval(poll, 3000);
+      if (!mounted) return;
+      setStatus('waiting');
 
-    // Stop polling after 5 minutes
-    const timeout = setTimeout(() => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      setStatus('error');
-      setErrorMsg('Waktu verifikasi habis. Silakan coba lagi.');
-    }, 5 * 60 * 1000);
+      // Start polling for verification
+      const { promise, abort } = pollVerification(otpData.otp);
+      abortRef.current = abort;
+
+      const result = await promise;
+      if (!mounted) return;
+
+      if (result.status === 'VERIFIED') {
+        setStatus('verifying');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        await login(result.phone!, result.authkey!, currentBranchCode, result.name);
+        setStatus('verified');
+        setTimeout(() => router.replace('/'), 500);
+      } else if (result.status === 'EXPIRED') {
+        setStatus('error');
+        setErrorMsg('Kode OTP sudah kadaluarsa. Silakan coba lagi.');
+      } else {
+        setStatus('error');
+        setErrorMsg('Waktu verifikasi habis. Silakan coba lagi.');
+      }
+    })();
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      clearTimeout(timeout);
+      mounted = false;
+      abortRef.current?.();
     };
-  }, [status, otpData]);
+  }, [otpData]);
 
   const handleRetry = () => {
+    abortRef.current?.();
     router.back();
   };
 
-  const handleOpenWhatsApp = () => {
+  const handleOpenWhatsApp = async () => {
     if (!otpData) return;
-    Linking.openURL(otpData.url).catch(() => {
+    try {
+      await WebBrowser.openAuthSessionAsync(
+        otpData.url,
+        'kamarasan://auth/callback',
+      );
+    } catch {
       Alert.alert('Error', 'Tidak bisa membuka WhatsApp');
-    });
+    }
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={handleRetry}>
           <Ionicons name="chevron-back" size={22} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Verifikasi WhatsApp</Text>
@@ -181,6 +170,10 @@ export default function WhatsAppWaitingScreen() {
                   <Ionicons name="logo-whatsapp" size={18} color={Colors.green} />
                   <Text style={styles.openWaText}>Buka WhatsApp Lagi</Text>
                 </TouchableOpacity>
+
+                <Text style={styles.hintText}>
+                  Tidak punya WhatsApp? Kembali dan gunakan Sign in with Apple.
+                </Text>
               </>
             )}
           </>
@@ -208,6 +201,8 @@ const styles = StyleSheet.create({
 
   openWaBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 32, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: Colors.greenMint },
   openWaText: { fontFamily: Font.semibold, fontSize: 14, color: Colors.green },
+
+  hintText: { fontFamily: Font.regular, fontSize: 12, color: Colors.textSoft, textAlign: 'center', marginTop: 20, lineHeight: 18, opacity: 0.7 },
 
   retryBtn: { marginTop: 24, backgroundColor: Colors.green, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14 },
   retryText: { fontFamily: Font.bold, fontSize: 15, color: '#fff' },
