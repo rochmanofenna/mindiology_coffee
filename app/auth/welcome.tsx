@@ -1,16 +1,23 @@
-// app/auth/welcome.tsx — Branded Welcome Screen
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, ActivityIndicator, Alert } from 'react-native';
+// app/auth/welcome.tsx — Welcome Screen
+// Three login paths: Sign in with Apple (primary), WhatsApp (secondary), Guest (text link)
+// Apple Guideline 4.8: Apple Sign In offered as first-class option
+import { useState, useEffect } from 'react';
+import {
+  View, Text, TouchableOpacity, StyleSheet, Dimensions,
+  ActivityIndicator, Alert, Platform, Image,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Haptics from 'expo-haptics';
-import { Colors, Font, Spacing } from '@/constants/theme';
+import { Colors, Font, Spacing, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { sendWhatsAppOTP } from '@/services/api';
 import { useBranch } from '@/context/BranchContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BTN_WIDTH = SCREEN_WIDTH - Spacing.xxl * 2;
 
 // Shared OTP state between welcome and phone screens (avoids URL param exposure)
 let pendingOtp: { otp: string; url: string } | null = null;
@@ -19,76 +26,136 @@ export function getPendingOtp() { return pendingOtp; }
 export function clearPendingOtp() { pendingOtp = null; }
 
 export default function WelcomeScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { setGuest } = useAuth();
+  const { setGuest, loginWithApple } = useAuth();
   const { currentBranchCode } = useBranch();
-  const [loading, setLoading] = useState(false);
+  const [loadingWa, setLoadingWa] = useState(false);
+  const [loadingApple, setLoadingApple] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => {});
+    }
+  }, []);
+
+  const handleAppleSignIn = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setLoadingApple(true);
+    try {
+      await loginWithApple();
+      router.replace('/');
+    } catch (err: any) {
+      if (err.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Login Gagal', 'Terjadi kesalahan saat Sign in with Apple. Silakan coba lagi.');
+      }
+    } finally {
+      setLoadingApple(false);
+    }
+  };
 
   const handleWhatsApp = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setLoading(true);
+    setLoadingWa(true);
     try {
       const result = await sendWhatsAppOTP(currentBranchCode);
       const { otp, otpMessageUrl } = result.data;
-      // Store OTP in memory instead of URL params to avoid exposure
       setPendingOtp({ otp, url: otpMessageUrl });
       router.push('/auth/phone');
     } catch (err: any) {
       Alert.alert('Gagal', err?.message || 'Tidak bisa menghubungi server. Coba lagi.');
     } finally {
-      setLoading(false);
+      setLoadingWa(false);
     }
   };
 
   const handleGuest = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     await setGuest();
     router.replace('/');
   };
 
+  const loading = loadingWa || loadingApple;
+
   return (
     <View style={styles.container}>
-      {/* Top branding */}
-      <View style={styles.brandSection}>
+      {/* ─── Top: Brand identity ─── */}
+      <View style={[styles.brandSection, { paddingTop: insets.top + 40 }]}>
+        {/* Decorative line */}
+        <View style={styles.decorLine} />
+
         <Text style={styles.brandName}>Mindiology</Text>
-        <Text style={styles.brandTagline}>SOULFOOD NUSANTARA</Text>
+
+        <Text style={styles.taglineUpper}>SOULFOOD NUSANTARA</Text>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <View style={styles.dividerDot} />
+          <View style={styles.dividerLine} />
+        </View>
+
+        <Text style={styles.tagline}>Pesan makanan & minuman favorit</Text>
       </View>
 
-      {/* Center icon */}
+      {/* ─── Center: Visual element ─── */}
       <View style={styles.centerSection}>
-        <View style={styles.iconCircle}>
-          <Ionicons name="restaurant" size={48} color={Colors.white} />
+        <View style={styles.iconOuter}>
+          <View style={styles.iconInner}>
+            <Ionicons name="restaurant" size={44} color={Colors.green} />
+          </View>
         </View>
       </View>
 
-      {/* Bottom actions */}
-      <View style={styles.bottomSection}>
-        <TouchableOpacity activeOpacity={0.85} onPress={handleWhatsApp} disabled={loading}>
-          <LinearGradient
-            colors={[Colors.green, Colors.greenDeep]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.whatsappBtn}
-          >
-            {loading ? (
-              <>
-                <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
-                <Text style={styles.whatsappText}>Menghubungkan...</Text>
-              </>
+      {/* ─── Bottom: Auth actions ─── */}
+      <View style={[styles.bottomSection, { paddingBottom: insets.bottom + 24 }]}>
+        {/* Sign in with Apple — PRIMARY (Apple Guideline 4.8) */}
+        {appleAvailable && (
+          <View style={styles.appleWrap}>
+            {loadingApple ? (
+              <View style={styles.appleLoading}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.appleLoadingText}>Menghubungkan...</Text>
+              </View>
             ) : (
-              <>
-                <Ionicons name="logo-whatsapp" size={22} color={Colors.white} style={styles.whatsappIcon} />
-                <Text style={styles.whatsappText}>Masuk dengan WhatsApp</Text>
-              </>
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={14}
+                style={styles.appleBtn}
+                onPress={handleAppleSignIn}
+              />
             )}
-          </LinearGradient>
+          </View>
+        )}
+
+        {/* Sign in with WhatsApp — SECONDARY (outline style) */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={handleWhatsApp}
+          disabled={loading}
+          style={styles.waBtn}
+        >
+          {loadingWa ? (
+            <>
+              <ActivityIndicator color={Colors.green} size="small" style={{ marginRight: 8 }} />
+              <Text style={styles.waBtnText}>Menghubungkan...</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="logo-whatsapp" size={20} color={Colors.green} style={{ marginRight: 8 }} />
+              <Text style={styles.waBtnText}>Masuk dengan WhatsApp</Text>
+            </>
+          )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} activeOpacity={0.7}>
+        {/* Guest mode — text link */}
+        <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} activeOpacity={0.6} disabled={loading}>
           <Text style={styles.guestText}>Lanjutkan sebagai Tamu</Text>
+          <Ionicons name="arrow-forward" size={14} color={Colors.textSoft} style={{ marginLeft: 4 }} />
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Kamarasan v1.1.0</Text>
+        <Text style={styles.versionText}>Mindiology v1.2.0</Text>
       </View>
     </View>
   );
@@ -99,72 +166,152 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.cream,
   },
+
+  // ─── Brand ───
   brandSection: {
-    flex: 0.4,
-    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: Spacing.xxl,
+  },
+  decorLine: {
+    width: 32,
+    height: 2,
+    backgroundColor: Colors.gold,
+    borderRadius: 1,
+    marginBottom: 20,
   },
   brandName: {
     fontFamily: Font.displayBlack,
-    fontSize: 42,
-    color: Colors.green,
+    fontSize: 44,
+    color: Colors.greenForest,
+    letterSpacing: -1,
   },
-  brandTagline: {
-    fontFamily: Font.medium,
-    fontSize: 12,
-    letterSpacing: 3,
+  taglineUpper: {
+    fontFamily: Font.semibold,
+    fontSize: 11,
+    letterSpacing: 4,
+    color: Colors.gold,
+    marginTop: 6,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  dividerLine: {
+    width: 24,
+    height: 1,
+    backgroundColor: Colors.goldLight,
+  },
+  dividerDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: Colors.gold,
+  },
+  tagline: {
+    fontFamily: Font.regular,
+    fontSize: 15,
     color: Colors.textSoft,
-    marginTop: Spacing.sm,
+    letterSpacing: 0.3,
   },
+
+  // ─── Center icon ───
   centerSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.xxxl,
-  },
-  iconCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: Colors.green,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconOuter: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 1.5,
+    borderColor: Colors.greenMint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconInner: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.greenMint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ─── Bottom actions ───
   bottomSection: {
-    flex: 0.4,
-    justifyContent: 'flex-end',
     alignItems: 'center',
     paddingHorizontal: Spacing.xxl,
-    paddingBottom: 48,
   },
-  whatsappBtn: {
+
+  // Apple button
+  appleWrap: {
+    width: BTN_WIDTH,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  appleBtn: {
+    width: BTN_WIDTH,
+    height: 52,
+  },
+  appleLoading: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    width: SCREEN_WIDTH - Spacing.xxl * 2,
-    height: 56,
+    width: BTN_WIDTH,
+    height: 52,
     borderRadius: 14,
+    backgroundColor: '#000',
   },
-  whatsappIcon: {
-    marginRight: Spacing.sm,
-  },
-  whatsappText: {
-    fontFamily: Font.bold,
+  appleLoadingText: {
+    fontFamily: Font.semibold,
     fontSize: 16,
-    color: Colors.white,
+    color: '#fff',
+    marginLeft: 8,
   },
+
+  // WhatsApp button (secondary — outline)
+  waBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: BTN_WIDTH,
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.green,
+    backgroundColor: 'transparent',
+    marginBottom: 16,
+  },
+  waBtnText: {
+    fontFamily: Font.semibold,
+    fontSize: 16,
+    color: Colors.green,
+  },
+
+  // Guest link
   guestBtn: {
-    marginTop: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: Spacing.md,
   },
   guestText: {
-    fontFamily: Font.semibold,
+    fontFamily: Font.medium,
     fontSize: 14,
     color: Colors.textSoft,
   },
+
   versionText: {
     fontFamily: Font.regular,
     fontSize: 11,
-    color: Colors.textSoft,
-    marginTop: Spacing.xxl,
+    color: Colors.textSoft + '88',
+    marginTop: 16,
   },
 });
