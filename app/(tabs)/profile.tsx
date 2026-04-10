@@ -39,7 +39,7 @@ const TIER_TEXT_COLORS: Record<TierKey, string> = {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const { orderHistory, fetchHistory, activeOrders } = useOrder();
   const points = user?.points || 0;
   const tier: TierKey = user?.tier || 'Perunggu';
@@ -70,6 +70,28 @@ export default function ProfileScreen() {
   const handleLogout = async () => {
     await logout();
     router.replace('/auth/welcome' as any);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Hapus Akun',
+      'Apakah kamu yakin ingin menghapus akun? Semua data pesanan dan poin rewards akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.\n\nUntuk penghapusan data lengkap dari server, hubungi hello@kamarasan.app',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Hapus Akun',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccount();
+              router.replace('/auth/welcome' as any);
+            } catch {
+              Alert.alert('Gagal', 'Terjadi kesalahan saat menghapus akun. Silakan coba lagi.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -152,6 +174,14 @@ export default function ProfileScreen() {
         ))}
       </View>
 
+      {/* Delete Account — Apple requires this per Guideline 4 */}
+      {user && (
+        <TouchableOpacity style={styles.deleteBtn} activeOpacity={0.7} onPress={handleDeleteAccount}>
+          <Ionicons name="trash-outline" size={18} color={Colors.hibiscus} />
+          <Text style={styles.deleteText}>Hapus Akun</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.7} onPress={handleLogout}>
         <Ionicons name="log-out-outline" size={18} color={Colors.hibiscus} />
@@ -207,7 +237,9 @@ const styles = StyleSheet.create({
   naviBtnText: { fontFamily: Font.semibold, fontSize: 13, color: Colors.green },
 
   // Logout
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: Spacing.xxl, marginTop: 28, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: Colors.hibiscus + '33' },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: Spacing.xxl, marginTop: 28, padding: 14, borderRadius: 14, backgroundColor: Colors.hibiscusLight },
+  deleteText: { color: Colors.hibiscus, fontSize: 14, fontFamily: Font.semibold },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: Spacing.xxl, marginTop: 12, padding: 14, borderRadius: 14, borderWidth: 1.5, borderColor: Colors.hibiscus + '33' },
   logoutText: { color: Colors.hibiscus, fontSize: 14, fontWeight: '600' },
   version: { textAlign: 'center', fontSize: 11, color: Colors.textSoft + '88', marginTop: 16 },
 });
