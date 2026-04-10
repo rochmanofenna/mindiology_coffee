@@ -77,12 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (cachedUser) {
-          if (cachedUser.loginMethod === 'apple' && !cachedUser.esbLinked) {
+          // Backward compat: users cached before auth overhaul won't have these fields
+          const loginMethod = cachedUser.loginMethod || (cachedUser.appleUserID ? 'apple' : 'whatsapp');
+          const esbLinked = cachedUser.esbLinked ?? (!!token && !!cachedUser.phone);
+
+          if (loginMethod === 'apple' && !esbLinked) {
             // Apple user without ESB link — restore without authkey
-            setUser({ ...cachedUser, authkey: '' });
+            setUser({ ...cachedUser, loginMethod, esbLinked, authkey: '' });
           } else if (token) {
             // WhatsApp user or linked Apple user — restore with authkey
-            setUser({ ...cachedUser, authkey: token });
+            setUser({ ...cachedUser, loginMethod, esbLinked: true, authkey: token });
           }
           // If no token and not an unlinked Apple user, fall through to guest/welcome
         }
@@ -290,6 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       storageRemove(GUEST_KEY),
       cacheClear(CART_KEY),
       cacheClear('cache:active_orders'),
+      cacheClear('cache:order_history'),
       // Clear Apple-specific keys if applicable
       appleUserID ? SecureStore.deleteItemAsync(`apple_esb_link:${appleUserID}`) : Promise.resolve(),
       appleUserID ? SecureStore.deleteItemAsync(`apple_identity:${appleUserID}`) : Promise.resolve(),
