@@ -1,6 +1,11 @@
 // context/AuthContext.tsx — Authentication state manager
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+// Supports: WhatsApp OTP, Sign in with Apple, Guest mode
+// Apple users can browse without ESB link; phone linking happens at checkout.
+import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Sentry from '@sentry/react-native';
+import { Platform } from 'react-native';
 import { checkMembership } from '@/services/api';
 import {
   cacheGet,
@@ -14,6 +19,8 @@ import {
   CART_KEY,
 } from '@/utils/cache';
 
+export type LoginMethod = 'whatsapp' | 'apple' | 'guest';
+
 export interface User {
   phone: string;
   name: string;
@@ -21,6 +28,11 @@ export interface User {
   points: number;
   tier: 'Perunggu' | 'Perak' | 'Emas';
   authkey: string;
+  // Apple Sign In fields
+  appleUserID?: string;
+  appleEmail?: string;
+  loginMethod: LoginMethod;
+  esbLinked: boolean;
 }
 
 interface AuthState {
@@ -28,9 +40,12 @@ interface AuthState {
   isLoading: boolean;
   isGuest: boolean;
   login: (phone: string, authkey: string, branch: string, verifiedName?: string) => Promise<void>;
+  loginWithApple: () => Promise<void>;
+  linkESBAccount: (phone: string, authkey: string, branch: string) => Promise<void>;
   logout: () => Promise<void>;
   setGuest: () => Promise<void>;
   updateName: (name: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -41,12 +56,17 @@ function determineTier(points: number): 'Perunggu' | 'Perak' | 'Emas' {
   return 'Perunggu';
 }
 
+/** Persist user to AsyncStorage (authkey stripped for security). */
+async function persistUser(user: User) {
+  await cacheSet(AUTH_USER_KEY, { ...user, authkey: '' });
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);
 
-  // Restore persisted auth state on mount
+  // ─── Restore persisted auth state on mount ───
   useEffect(() => {
     (async () => {
       try {
@@ -56,89 +76,249 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           storageGet(GUEST_KEY),
         ]);
 
-        if (cachedUser && token) {
-          setUser({ ...cachedUser, authkey: token });
+        if (cachedUser) {
+          if (cachedUser.loginMethod === 'apple' && !cachedUser.esbLinked) {
+            // Apple user without ESB link — restore without authkey
+            setUser({ ...cachedUser, authkey: '' });
+          } else if (token) {
+            // WhatsApp user or linked Apple user — restore with authkey
+            setUser({ ...cachedUser, authkey: token });
+          }
+          // If no token and not an unlinked Apple user, fall through to guest/welcome
         }
 
-        if (guestFlag === 'true') {
+        if (guestFlag === 'true' && !cachedUser) {
           setIsGuest(true);
         }
+      } catch (err) {
+        Sentry.captureException(err, { tags: { context: 'auth_restore' } });
       } finally {
         setIsLoading(false);
       }
     })();
   }, []);
 
-  const login = async (phone: string, authkey: string, branch: string, verifiedName?: string) => {
+  // ─── WhatsApp OTP login ───
+  const login = useCallback(async (phone: string, authkey: string, branch: string, verifiedName?: string) => {
     let memberData: any = null;
     try {
       memberData = await checkMembership(branch, phone);
     } catch {
-      // Membership check failed (staging auth issue, network, etc.) — proceed with basic user
+      // Membership check failed — proceed with basic user
     }
 
-    // No member data or not registered — create basic user
-    if (!memberData || memberData?.status === 'NOT_REGISTERED' || (!memberData?.memberName && !memberData?.name && !memberData?.memberCode)) {
-      const basicUser: User = {
-        phone,
-        authkey,
-        name: verifiedName || phone,
-        memberCode: '',
-        points: 0,
-        tier: 'Perunggu',
-      };
-      setUser(basicUser);
-      await cacheSet(AUTH_USER_KEY, { ...basicUser, authkey: '' });
-      await SecureStore.setItemAsync('auth_token', authkey);
-      return;
-    }
+    const isRegistered = memberData
+      && memberData.status !== 'NOT_REGISTERED'
+      && (memberData.memberName || memberData.name || memberData.memberCode);
 
     const newUser: User = {
       phone,
       authkey,
-      name: memberData.memberName || memberData.name || verifiedName || phone,
-      memberCode: memberData.memberCode || memberData.memberID || '',
-      points: memberData.totalPoint || memberData.points || 0,
-      tier: determineTier(memberData.totalPoint || 0),
+      name: isRegistered
+        ? (memberData.memberName || memberData.name || verifiedName || phone)
+        : (verifiedName || phone),
+      memberCode: isRegistered ? (memberData.memberCode || memberData.memberID || '') : '',
+      points: isRegistered ? (memberData.totalPoint || memberData.points || 0) : 0,
+      tier: determineTier(isRegistered ? (memberData.totalPoint || 0) : 0),
+      loginMethod: 'whatsapp',
+      esbLinked: true,
     };
-
-    await Promise.all([
-      cacheSet(AUTH_USER_KEY, { ...newUser, authkey: '' }),
-      SecureStore.setItemAsync('auth_token', authkey),
-      storageRemove(GUEST_KEY),
-    ]);
 
     setUser(newUser);
     setIsGuest(false);
-  };
+    await Promise.all([
+      persistUser(newUser),
+      SecureStore.setItemAsync('auth_token', authkey),
+      storageRemove(GUEST_KEY),
+    ]);
+  }, []);
 
-  const logout = async () => {
+  // ─── Sign in with Apple ───
+  const loginWithApple = useCallback(async () => {
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+    });
+
+    const appleUserID = credential.user;
+    const email = credential.email ?? undefined;
+    const fullName = credential.fullName;
+    const displayName = fullName
+      ? [fullName.givenName, fullName.familyName].filter(Boolean).join(' ') || undefined
+      : undefined;
+
+    // Persist Apple identity on first sign-in (name/email only returned once)
+    if (displayName || email) {
+      await SecureStore.setItemAsync(
+        `apple_identity:${appleUserID}`,
+        JSON.stringify({ displayName, email }),
+      );
+    }
+
+    // Retrieve stored display name if this isn't the first sign-in
+    let storedName = displayName;
+    let storedEmail = email;
+    if (!storedName || !storedEmail) {
+      try {
+        const stored = await SecureStore.getItemAsync(`apple_identity:${appleUserID}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          storedName = storedName || parsed.displayName;
+          storedEmail = storedEmail || parsed.email;
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Check for previously linked ESB account
+    let linkedData: { phone: string; authkey: string; branch: string } | null = null;
+    try {
+      const stored = await SecureStore.getItemAsync(`apple_esb_link:${appleUserID}`);
+      if (stored) linkedData = JSON.parse(stored);
+    } catch { /* ignore */ }
+
+    if (linkedData?.authkey) {
+      // Restore linked ESB session
+      let memberData: any = null;
+      try {
+        memberData = await checkMembership(linkedData.branch, linkedData.phone);
+      } catch { /* proceed with cached data */ }
+
+      const restoredUser: User = {
+        phone: linkedData.phone,
+        authkey: linkedData.authkey,
+        name: memberData?.memberName || memberData?.name || storedName || storedEmail || 'Member',
+        memberCode: memberData?.memberCode || memberData?.memberID || '',
+        points: memberData?.totalPoint || memberData?.points || 0,
+        tier: determineTier(memberData?.totalPoint || 0),
+        appleUserID,
+        appleEmail: storedEmail,
+        loginMethod: 'apple',
+        esbLinked: true,
+      };
+
+      setUser(restoredUser);
+      setIsGuest(false);
+      await Promise.all([
+        persistUser(restoredUser),
+        SecureStore.setItemAsync('auth_token', linkedData.authkey),
+        storageRemove(GUEST_KEY),
+      ]);
+    } else {
+      // Apple-only session — no ESB link yet
+      const appleUser: User = {
+        phone: '',
+        authkey: '',
+        name: storedName || storedEmail || 'Member',
+        memberCode: '',
+        points: 0,
+        tier: 'Perunggu',
+        appleUserID,
+        appleEmail: storedEmail,
+        loginMethod: 'apple',
+        esbLinked: false,
+      };
+
+      setUser(appleUser);
+      setIsGuest(false);
+      await Promise.all([
+        persistUser(appleUser),
+        storageRemove(GUEST_KEY),
+      ]);
+    }
+  }, []);
+
+  // ─── Link ESB account to Apple user ───
+  const linkESBAccount = useCallback(async (phone: string, authkey: string, branch: string) => {
+    if (!user) return;
+
+    let memberData: any = null;
+    try {
+      memberData = await checkMembership(branch, phone);
+    } catch { /* proceed without member data */ }
+
+    const isRegistered = memberData
+      && memberData.status !== 'NOT_REGISTERED'
+      && (memberData.memberName || memberData.name || memberData.memberCode);
+
+    const linkedUser: User = {
+      ...user,
+      phone,
+      authkey,
+      name: isRegistered ? (memberData.memberName || memberData.name || user.name) : user.name,
+      memberCode: isRegistered ? (memberData.memberCode || memberData.memberID || '') : '',
+      points: isRegistered ? (memberData.totalPoint || memberData.points || 0) : 0,
+      tier: determineTier(isRegistered ? (memberData.totalPoint || 0) : 0),
+      esbLinked: true,
+    };
+
+    setUser(linkedUser);
+    await Promise.all([
+      persistUser(linkedUser),
+      SecureStore.setItemAsync('auth_token', authkey),
+    ]);
+
+    // Store the Apple ID ↔ ESB link for future session restores
+    if (user.appleUserID) {
+      await SecureStore.setItemAsync(
+        `apple_esb_link:${user.appleUserID}`,
+        JSON.stringify({ phone, authkey, branch }),
+      );
+    }
+  }, [user]);
+
+  // ─── Logout ───
+  const logout = useCallback(async () => {
+    const appleUserID = user?.appleUserID;
     await Promise.all([
       cacheClear(AUTH_USER_KEY),
       SecureStore.deleteItemAsync('auth_token'),
       storageRemove(GUEST_KEY),
       cacheClear(CART_KEY),
     ]);
-
     setUser(null);
     setIsGuest(false);
-  };
+  }, [user]);
 
-  const updateName = async (name: string) => {
+  // ─── Delete account ───
+  const deleteAccount = useCallback(async () => {
+    const appleUserID = user?.appleUserID;
+    await Promise.all([
+      cacheClear(AUTH_USER_KEY),
+      SecureStore.deleteItemAsync('auth_token'),
+      storageRemove(GUEST_KEY),
+      cacheClear(CART_KEY),
+      cacheClear('cache:active_orders'),
+      // Clear Apple-specific keys if applicable
+      appleUserID ? SecureStore.deleteItemAsync(`apple_esb_link:${appleUserID}`) : Promise.resolve(),
+      appleUserID ? SecureStore.deleteItemAsync(`apple_identity:${appleUserID}`) : Promise.resolve(),
+    ]);
+    setUser(null);
+    setIsGuest(false);
+  }, [user]);
+
+  // ─── Update display name ───
+  const updateName = useCallback(async (name: string) => {
     if (!user) return;
     const updated = { ...user, name };
     setUser(updated);
-    await cacheSet(AUTH_USER_KEY, { ...updated, authkey: '' });
-  };
+    await persistUser(updated);
+  }, [user]);
 
-  const setGuestMode = async () => {
+  // ─── Guest mode ───
+  const setGuestMode = useCallback(async () => {
     await storageSet(GUEST_KEY, 'true');
     setIsGuest(true);
-  };
+  }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isGuest, login, logout, setGuest: setGuestMode, updateName }}
+      value={{
+        user, isLoading, isGuest,
+        login, loginWithApple, linkESBAccount,
+        logout, setGuest: setGuestMode, updateName, deleteAccount,
+      }}
     >
       {children}
     </AuthContext.Provider>
