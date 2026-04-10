@@ -32,6 +32,7 @@ import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPaym
 // Google Places autocomplete built inline — avoids broken react-native-uuid dep
 import QRCode from 'react-native-qrcode-svg';
 import { useOrder } from '@/context/OrderContext';
+import { PhoneLinkSheet } from '@/components/PhoneLinkSheet';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -278,6 +279,7 @@ export default function CartScreen() {
   const [promoCode, setPromoCode] = useState('');
   const [appliedVoucher, setAppliedVoucher] = useState<{ code: string; discount: number; name: string } | null>(null);
   const [promoLoading, setPromoLoading] = useState(false);
+  const [showPhoneLinkSheet, setShowPhoneLinkSheet] = useState(false);
 
   // Payment methods from branch settings (dynamic) or hardcoded fallback
   const availablePayments = branchPaymentMethods.filter(m => m.available);
@@ -408,6 +410,20 @@ export default function CartScreen() {
   const handleCheckout = async () => {
     if (!user) {
       Alert.alert('Login Diperlukan', 'Silakan login terlebih dahulu untuk memesan', [
+        { text: 'Login', onPress: () => router.push('/auth/welcome' as any) },
+        { text: 'Batal', style: 'cancel' },
+      ]);
+      return;
+    }
+
+    // Apple user without ESB link — need to link phone number first
+    if (user.loginMethod === 'apple' && !user.esbLinked) {
+      setShowPhoneLinkSheet(true);
+      return;
+    }
+
+    if (!user.authkey) {
+      Alert.alert('Sesi Berakhir', 'Silakan login ulang untuk memesan', [
         { text: 'Login', onPress: () => router.push('/auth/welcome' as any) },
         { text: 'Batal', style: 'cancel' },
       ]);
@@ -675,6 +691,7 @@ export default function CartScreen() {
 
   // Main cart view ---------------------------------------------------------
   return (
+    <>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={styles.root}>
       <ScrollView
@@ -1031,6 +1048,19 @@ export default function CartScreen() {
       </View>
     </View>
     </KeyboardAvoidingView>
+
+    {/* Phone link sheet for Apple users without ESB link */}
+    <PhoneLinkSheet
+      visible={showPhoneLinkSheet}
+      onClose={() => setShowPhoneLinkSheet(false)}
+      onLinked={() => {
+        setShowPhoneLinkSheet(false);
+        // After linking, retry checkout
+        handleCheckout();
+      }}
+      branchCode={currentBranchCode}
+    />
+    </>
   );
 }
 
