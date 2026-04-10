@@ -42,8 +42,11 @@ export default function BarcodeScreen() {
     app: 'kamarasan',
   });
 
-  // Guest state — prompt to login
-  if (!user) {
+  // Guest or unlinked Apple user — prompt to login or link phone
+  if (!user || (user.loginMethod === 'apple' && !user.esbLinked)) {
+    const message = user?.loginMethod === 'apple'
+      ? 'Hubungkan nomor telepon untuk mendapatkan barcode member'
+      : 'Login untuk melihat barcode member';
     return (
       <View style={styles.container}>
         {/* Header */}
@@ -56,9 +59,9 @@ export default function BarcodeScreen() {
 
         <View style={styles.guestContainer}>
           <Ionicons name="barcode-outline" size={64} color={Colors.textSoft} />
-          <Text style={styles.guestTitle}>Login untuk melihat barcode member</Text>
+          <Text style={styles.guestTitle}>{message}</Text>
           <TouchableOpacity style={styles.guestLoginBtn} onPress={() => router.replace('/auth/welcome' as any)}>
-            <Text style={styles.guestLoginText}>Login</Text>
+            <Text style={styles.guestLoginText}>{user ? 'Hubungkan' : 'Login'}</Text>
           </TouchableOpacity>
         </View>
       </View>
