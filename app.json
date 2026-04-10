@@ -18,6 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.kamarasan.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -39,7 +40,8 @@
       "expo-asset",
       "expo-brightness",
       "expo-document-picker",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true
