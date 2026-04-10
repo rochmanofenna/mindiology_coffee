@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Font, Spacing } from '@/constants/theme';
+import * as Sentry from '@sentry/react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useOrder } from '@/context/OrderContext';
 import { STORES } from '@/constants/stores';
@@ -85,7 +86,8 @@ export default function ProfileScreen() {
             try {
               await deleteAccount();
               router.replace('/auth/welcome' as any);
-            } catch {
+            } catch (err) {
+              Sentry.captureException(err, { tags: { context: 'delete_account' } });
               Alert.alert('Gagal', 'Terjadi kesalahan saat menghapus akun. Silakan coba lagi.');
             }
           },
