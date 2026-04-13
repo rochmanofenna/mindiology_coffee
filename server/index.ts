@@ -51,6 +51,11 @@ function validate(value: any, pattern: RegExp, name: string): string {
 
 /** Sanitize error for client — never leak raw ESB responses */
 function safeError(err: any): { status: number; body: { error: true; message: string } } {
+  // Detect fetch timeout (AbortSignal.timeout fires TimeoutError; manual abort fires AbortError)
+  if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+    Sentry.captureException(err);
+    return { status: 504, body: { error: true, message: 'ESB tidak merespons. Silakan coba lagi.' } };
+  }
   const status = typeof err?.status === 'number' && err.status >= 400 ? err.status : 500;
   const message = typeof err?.message === 'string' && err.message.length < 200
     ? err.message
@@ -64,6 +69,8 @@ function safeError(err: any): { status: number; body: { error: true; message: st
 }
 
 // ─── ESB Config (from OpenAPI spec) ───
+const ESB_TIMEOUT = 30_000; // 30s — prevents indefinite hangs if ESB is slow/down
+
 const ESB_BASE = process.env.ESB_ENV === 'staging'
   ? 'https://stg7.esb.co.id/api-ezo/web'   // Staging
   : 'https://eso-api.esb.co.id';             // Production
@@ -91,6 +98,7 @@ const esb = async (
   const res = await fetch(`${ESB_BASE}${path}`, {
     method: opts.method || 'GET',
     headers,
+    signal: AbortSignal.timeout(ESB_TIMEOUT),
     ...(opts.body ? { body: JSON.stringify(opts.body) } : {}),
   });
 
@@ -288,6 +296,7 @@ app.post('/api/membership/check', async (req, res) => {
         'Authorization': `Bearer ${ESB_TOKEN}`,
         'Data-Branch': branch || DEFAULT_BRANCH,
       },
+      signal: AbortSignal.timeout(ESB_TIMEOUT),
       body: JSON.stringify({ phoneNumber, countryCode: countryCode || '+62' }),
     });
     const data = await esbRes.json();
@@ -398,6 +407,7 @@ app.post('/api/auth/whatsapp/send-otp', async (req, res) => {
     const esbRes = await fetch(`${ESB_AUTH_BASE}/customer/whatsapp/generate-otp`, {
       method: 'POST',
       headers,
+      signal: AbortSignal.timeout(ESB_TIMEOUT),
       body: JSON.stringify({
         requestText: "Hai! Saya ingin login ke Kamarasan dengan kode verifikasi:",
         responseText: "Verifikasi berhasil! Klik link di bawah ini untuk melanjutkan pesanan kamu 🤩\n\n{{redirectUrl}}",
@@ -427,6 +437,7 @@ app.post('/api/auth/whatsapp/verify', async (req, res) => {
         'Authorization': `Bearer ${ESB_TOKEN}`,
         'Data-Company': COMPANY_CODE,
       },
+      signal: AbortSignal.timeout(ESB_TIMEOUT),
       body: JSON.stringify({ otp, appID: 'esoqs' }),
     });
     const data = await esbRes.json();
@@ -517,6 +528,7 @@ app.post('/api/user/auth', async (req, res) => {
         'Content-Type': 'application/json',
         'Data-Company': COMPANY_CODE,
       },
+      signal: AbortSignal.timeout(ESB_TIMEOUT),
       body: JSON.stringify(req.body),
     });
     const data = await esbRes.json();
@@ -541,6 +553,7 @@ app.post('/api/user/orders', async (req, res) => {
         'Authorization': `Bearer ${userToken}`,
         'Data-Company': COMPANY_CODE,
       },
+      signal: AbortSignal.timeout(ESB_TIMEOUT),
       ...(page ? { body: JSON.stringify({ page: String(page) }) } : {}),
     });
     const data = await esbRes.json();
@@ -563,6 +576,7 @@ app.get('/api/user/addresses', async (req, res) => {
         'Authorization': `Bearer ${userToken}`,
         'Data-Company': COMPANY_CODE,
       },
+      signal: AbortSignal.timeout(ESB_TIMEOUT),
     });
     const data = await esbRes.json();
     if (!esbRes.ok) throw { status: esbRes.status, ...data };
