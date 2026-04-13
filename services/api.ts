@@ -312,7 +312,19 @@ export const getOrder = (orderId: string, branch: string) =>
 export const encryptQrData = (branch: string, orderId: string) =>
   api('/api/order/encrypt-qr-data', { body: { branch, orderID: orderId } });
 
-export const validatePayment = (orderId: string, branch: string) =>
+export interface PaymentValidateResponse {
+  companyCode: string;
+  branchCode: string;
+  status: 'pending' | 'settlement' | 'expired' | 'closed';
+  flagPushToPOS: boolean | null;
+  errorMessage: string;
+  timeRemaining: number | null;
+  vaNumber: string | null;
+  qrString: string | null;
+  paymentTotal: number | null;
+}
+
+export const validatePayment = (orderId: string, branch: string): Promise<PaymentValidateResponse> =>
   api(`/api/payment/validate/${orderId}`, { branch });
 
 export const getVouchers = (branch: string, memberCode: string) =>

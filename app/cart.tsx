@@ -28,7 +28,7 @@ import { useBranch } from '@/context/BranchContext';
 import { useCart, type CartItem } from '@/context/CartContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPayment, encryptQrData, checkDeliveryDistance, getCourierCost } from '@/services/api';
+import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPayment, checkDeliveryDistance, getCourierCost } from '@/services/api';
 // Google Places autocomplete built inline — avoids broken react-native-uuid dep
 import QRCode from 'react-native-qrcode-svg';
 import { useOrder } from '@/context/OrderContext';
@@ -436,7 +436,6 @@ export default function CartScreen() {
     try {
       let orderId: string;
       let queueNum = '';
-      let cashierQrData = '';
 
       if (CONFIG.REAL_ORDERS_ENABLED) {
         // REAL MODE: Submit to ESB (schema from Nando @ ESB)
@@ -547,54 +546,64 @@ export default function CartScreen() {
         orderId = result.orderID || result.data?.orderID || result.id || '';
         queueNum = result.queueNum || result.data?.queueNum || '';
 
-        if (paymentMethod === 'cashier') {
-          // Pay at Cashier: get encrypted QR data for cashier to scan
-          try {
-            const qrResult = await encryptQrData(currentBranchCode, orderId);
-            cashierQrData = qrResult.encryptedData || qrResult.data?.encryptedData || qrResult.qrData || orderId;
-          } catch {
-            cashierQrData = orderId;
-          }
-        } else {
-          // Online payment: open redirect URL (DANA/Xendit)
-          const paymentUrl = result.redirectURL || result.data?.redirectURL
+        const isCashier = paymentMethod === 'cashier';
+        const redirectURL = !isCashier
+          ? (result.redirectURL || result.data?.redirectURL
             || result.redirectUrl || result.data?.redirectUrl
-            || result.paymentUrl || result.data?.paymentUrl;
-          if (paymentUrl) {
-            Linking.openURL(paymentUrl).catch(() => {});
-          }
+            || result.paymentUrl || result.data?.paymentUrl)
+          : null;
+
+        addActiveOrder({
+          orderId,
+          queueNum,
+          status: isCashier ? 'received' : 'waiting_payment',
+          items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
+          total,
+          orderMode,
+          createdAt: new Date().toISOString(),
+          branchCode: currentBranchCode,
+          paymentMethodID: paymentMethod || undefined,
+        });
+        clearCart();
+        setLoading(false);
+
+        if (redirectURL) {
+          // DANA/OVO — open payment app, callback handles navigation to payment-status
+          Linking.openURL(redirectURL).catch(() => {});
+        } else {
+          // QRIS or Cashier — navigate to payment status screen
+          router.replace({
+            pathname: '/payment-status',
+            params: { orderID: orderId, branchCode: currentBranchCode, queueNum, total: String(total), paymentMethod: paymentMethod || '' },
+          } as any);
         }
       } else {
         // STAGING MODE: Simulate order
         await new Promise(resolve => setTimeout(resolve, CONFIG.SIMULATED_ORDER_DELAY));
         orderId = `KMR-${String(Math.floor(Math.random() * 90000) + 10000)}`;
         queueNum = `Q${Math.floor(Math.random() * 900) + 100}`;
+
+        addActiveOrder({
+          orderId,
+          queueNum,
+          status: 'received',
+          items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
+          total,
+          orderMode,
+          createdAt: new Date().toISOString(),
+          branchCode: currentBranchCode,
+        });
+        clearCart();
+        setLastOrder({
+          items: [...cart],
+          total,
+          points: Math.round(subtotal),
+          orderID: orderId,
+          queueNum,
+        });
+        setLoading(false);
+        setConfirmed(true);
       }
-
-      const earnedPoints = Math.round(subtotal);
-
-      addActiveOrder({
-        orderId,
-        queueNum,
-        status: 'received',
-        items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
-        total,
-        orderMode,
-        createdAt: new Date().toISOString(),
-        branchCode: currentBranchCode,
-      });
-
-      clearCart();
-      setLastOrder({
-        items: [...cart],
-        total,
-        points: earnedPoints,
-        orderID: orderId,
-        queueNum,
-        qrData: cashierQrData || undefined,
-      });
-      setLoading(false);
-      setConfirmed(true);
     } catch (err: any) {
       setLoading(false);
       const status = err?.status || err?.statusCode;

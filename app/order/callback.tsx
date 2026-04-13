@@ -1,41 +1,46 @@
 // app/order/callback.tsx — Deep link handler for kamarasan://order/callback
-// DANA/Xendit redirects here after payment completion
-import { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, Alert, StyleSheet } from 'react-native';
+// DANA/Xendit redirects here after payment. Routes to payment-status for verification.
+import { useEffect } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Font } from '@/constants/theme';
-
-const FAILED_STATUSES = ['failed', 'cancelled', 'expired', 'denied'];
+import { useOrder } from '@/context/OrderContext';
 
 export default function OrderCallbackScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ orderId?: string; status?: string }>();
-  const [message, setMessage] = useState('Memeriksa status pembayaran...');
+  const params = useLocalSearchParams<{ orderId?: string }>();
+  const { activeOrders } = useOrder();
 
   useEffect(() => {
-    const status = params.status?.toLowerCase();
-
-    if (status && FAILED_STATUSES.includes(status)) {
-      setMessage('Pembayaran tidak berhasil');
-      Alert.alert(
-        'Pembayaran Gagal',
-        'Pembayaran tidak berhasil. Silakan coba lagi.',
-        [{ text: 'Kembali', onPress: () => router.replace('/cart' as any) }],
-      );
-      return;
-    }
-
-    // Success or unknown status — go to order tracking (polling determines real status)
+    // Brief delay to let OrderContext restore from cache on cold start
     const timer = setTimeout(() => {
-      router.replace('/(tabs)/order' as any);
-    }, 1500);
+      // Find order from deep link params or the most recent waiting_payment order
+      const order = params.orderId
+        ? activeOrders.find(o => o.orderId === params.orderId)
+        : activeOrders.find(o => o.status === 'waiting_payment');
+
+      if (order) {
+        router.replace({
+          pathname: '/payment-status',
+          params: {
+            orderID: order.orderId,
+            branchCode: order.branchCode,
+            queueNum: order.queueNum || '',
+            paymentMethod: order.paymentMethodID || '',
+          },
+        } as any);
+      } else {
+        // Fallback — order not found, go to tracking
+        router.replace('/(tabs)/order' as any);
+      }
+    }, 500);
     return () => clearTimeout(timer);
   }, []);
 
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color={Colors.green} />
-      <Text style={styles.text}>{message}</Text>
+      <Text style={styles.text}>Memproses pembayaran...</Text>
     </View>
   );
 }
