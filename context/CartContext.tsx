@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { AppMenuItem } from '@/services/api';
 import { cacheGet, cacheSet, cacheClear, CART_KEY } from '@/utils/cache';
+import { useBranch } from '@/context/BranchContext';
 
 export interface SelectedExtra {
   id: number;
@@ -84,6 +85,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart([]);
     cacheClear(CART_KEY);
   }, []);
+
+  // Clear cart when user switches branches — menus differ per branch
+  const { branchCode } = useBranch();
+  const prevBranchRef = useRef(branchCode);
+  useEffect(() => {
+    if (prevBranchRef.current && branchCode && prevBranchRef.current !== branchCode) {
+      clearCart();
+    }
+    prevBranchRef.current = branchCode;
+  }, [branchCode, clearCart]);
 
   const subtotal = cart.reduce((sum, item) => {
     const extrasPrice = item.selectedExtras.reduce((s, e) => s + e.price, 0);
