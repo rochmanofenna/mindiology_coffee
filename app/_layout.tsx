@@ -1,5 +1,6 @@
 // app/_layout.tsx
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -55,6 +56,20 @@ function AppNavigator() {
     registerForPushNotifications().then(token => {
       if (token) registerPushToken(user.phone, token).catch(() => {});
     }).catch(() => {});
+  }, [user?.phone]);
+
+  // Re-register push token when app returns to foreground (tokens can change)
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (appStateRef.current.match(/inactive|background/) && next === 'active' && user?.phone) {
+        registerForPushNotifications().then(token => {
+          if (token) registerPushToken(user.phone, token).catch(() => {});
+        }).catch(() => {});
+      }
+      appStateRef.current = next;
+    });
+    return () => sub.remove();
   }, [user?.phone]);
 
   // Prevent flash of home screen while checking auth state
