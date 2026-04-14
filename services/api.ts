@@ -335,6 +335,16 @@ export const getVouchers = (branch: string, memberCode: string) =>
 export const checkMembership = (branch: string, phone: string) =>
   api('/api/membership/check', { body: { branch, phoneNumber: phone, countryCode: '+62' } });
 
+export interface MemberLookupResponse {
+  memberID?: string;
+  email?: string;
+  phoneNumber?: string;
+  fullName?: string;
+}
+
+export const lookupMember = (branch: string, key: string): Promise<MemberLookupResponse> =>
+  api('/api/membership/lookup', { body: { branch, key } });
+
 export const sendWhatsAppOTP = (branch: string): Promise<{ data: { otp: string; otpMessageUrl: string } }> =>
   api('/api/auth/whatsapp/send-otp', { body: { branch } });
 

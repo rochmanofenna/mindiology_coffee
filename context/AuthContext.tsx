@@ -6,7 +6,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Sentry from '@sentry/react-native';
 import { Platform } from 'react-native';
-import { checkMembership } from '@/services/api';
+import { checkMembership, lookupMember } from '@/services/api';
 import {
   cacheGet,
   cacheSet,
@@ -61,6 +61,32 @@ function determineTier(points: number): 'Perunggu' | 'Perak' | 'Emas' {
 const appleIdentityKey = (userID: string) => `apple_identity_${userID}`;
 const appleEsbLinkKey = (userID: string) => `apple_esb_link_${userID}`;
 
+/**
+ * Resolve a member's display name + memberID for a given phone.
+ *
+ * ESB's /qsv1/membership/check-member-status only returns {status: REGISTERED|NOT_REGISTERED}.
+ * To get the actual fullName + memberID we have to call POST /qsv1/membership with
+ * {key: phoneNumber}. Points/tier require validate-login (password) which we don't have,
+ * so they stay at defaults.
+ */
+async function resolveMember(branch: string, phone: string): Promise<{ fullName?: string; memberCode?: string }> {
+  try {
+    const status = await checkMembership(branch, phone);
+    if (status?.status !== 'REGISTERED') return {};
+  } catch {
+    // status check failed — try lookup anyway
+  }
+  try {
+    const member = await lookupMember(branch, phone);
+    return {
+      fullName: member?.fullName || undefined,
+      memberCode: member?.memberID || undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 /** Persist user to AsyncStorage (authkey stripped for security). */
 async function persistUser(user: User) {
   await cacheSet(AUTH_USER_KEY, { ...user, authkey: '' });
@@ -109,26 +135,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ─── WhatsApp OTP login ───
   const login = useCallback(async (phone: string, authkey: string, branch: string, verifiedName?: string) => {
-    let memberData: any = null;
-    try {
-      memberData = await checkMembership(branch, phone);
-    } catch {
-      // Membership check failed — proceed with basic user
-    }
-
-    const isRegistered = memberData
-      && memberData.status !== 'NOT_REGISTERED'
-      && (memberData.memberName || memberData.name || memberData.memberCode);
+    const member = await resolveMember(branch, phone);
 
     const newUser: User = {
       phone,
       authkey,
-      name: isRegistered
-        ? (memberData.memberName || memberData.name || verifiedName || phone)
-        : (verifiedName || phone),
-      memberCode: isRegistered ? (memberData.memberCode || memberData.memberID || '') : '',
-      points: isRegistered ? (memberData.totalPoint || memberData.points || 0) : 0,
-      tier: determineTier(isRegistered ? (memberData.totalPoint || 0) : 0),
+      name: member.fullName || verifiedName || phone,
+      memberCode: member.memberCode || '',
+      // Points/tier require ESB validate-login (password auth) which WhatsApp OTP
+      // doesn't support. They'll stay at defaults until we add a richer member endpoint.
+      points: 0,
+      tier: 'Perunggu',
       loginMethod: 'whatsapp',
       esbLinked: true,
     };
@@ -197,19 +214,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (linkedData?.authkey) {
         // Restore linked ESB session
-        let memberData: any = null;
-        try {
-          step = 'checkMembership';
-          memberData = await checkMembership(linkedData.branch, linkedData.phone);
-        } catch { /* proceed with cached data */ }
+        step = 'resolveMember';
+        const member = await resolveMember(linkedData.branch, linkedData.phone);
 
         const restoredUser: User = {
           phone: linkedData.phone,
           authkey: linkedData.authkey,
-          name: memberData?.memberName || memberData?.name || storedName || storedEmail || 'Member',
-          memberCode: memberData?.memberCode || memberData?.memberID || '',
-          points: memberData?.totalPoint || memberData?.points || 0,
-          tier: determineTier(memberData?.totalPoint || 0),
+          name: member.fullName || storedName || storedEmail || 'Member',
+          memberCode: member.memberCode || '',
+          points: 0,
+          tier: 'Perunggu',
           appleUserID,
           appleEmail: storedEmail,
           loginMethod: 'apple',
@@ -274,23 +288,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const linkESBAccount = useCallback(async (phone: string, authkey: string, branch: string) => {
     if (!user) return;
 
-    let memberData: any = null;
-    try {
-      memberData = await checkMembership(branch, phone);
-    } catch { /* proceed without member data */ }
-
-    const isRegistered = memberData
-      && memberData.status !== 'NOT_REGISTERED'
-      && (memberData.memberName || memberData.name || memberData.memberCode);
+    const member = await resolveMember(branch, phone);
 
     const linkedUser: User = {
       ...user,
       phone,
       authkey,
-      name: isRegistered ? (memberData.memberName || memberData.name || user.name) : user.name,
-      memberCode: isRegistered ? (memberData.memberCode || memberData.memberID || '') : '',
-      points: isRegistered ? (memberData.totalPoint || memberData.points || 0) : 0,
-      tier: determineTier(isRegistered ? (memberData.totalPoint || 0) : 0),
+      name: member.fullName || user.name,
+      memberCode: member.memberCode || '',
+      points: 0,
+      tier: 'Perunggu',
       esbLinked: true,
     };
 

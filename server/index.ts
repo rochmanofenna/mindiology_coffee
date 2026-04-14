@@ -270,6 +270,27 @@ app.get('/api/vouchers', async (req, res) => {
   }
 });
 
+// POST /api/membership/lookup
+// ESB exposes member data via POST /qsv1/membership with { key: phoneNumber }.
+// Returns { memberID, email, phoneNumber, fullName }. Used after check-member-status
+// confirms REGISTERED to populate the user's actual name.
+app.post('/api/membership/lookup', async (req, res) => {
+  try {
+    const { branch, key } = req.body;
+    if (!key) throw { status: 400, message: 'Missing key' };
+    const data = await esb('/qsv1/membership', {
+      method: 'POST',
+      branch: branch || DEFAULT_BRANCH,
+      body: { key },
+    });
+    res.json(data);
+  } catch (err: any) {
+    console.error(`[membership-lookup] Error:`, err.message || err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
+  }
+});
+
 // POST /api/membership/check
 app.post('/api/membership/check', async (req, res) => {
   try {
