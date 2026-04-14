@@ -646,7 +646,7 @@ export default function OrderScreen() {
 
         {/* ── Active Orders ─────────────────────────────────────────── */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
+          <View style={[styles.sectionHeader, styles.activeSectionHeader]}>
             <Text style={styles.sectionTitle}>Pesanan Aktif</Text>
             {activeOrders.length > 0 && (
               <View style={styles.sectionCount}>
@@ -810,17 +810,18 @@ const styles = StyleSheet.create({
   section: {
     paddingHorizontal: Spacing.xxl,
     marginBottom: Spacing.xl + 12,
-    // Must leave room for the queue number to bleed above the first card.
-    paddingTop: 36,
+    paddingTop: Spacing.xl,
     overflow: 'visible',
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: Spacing.md + 2,
-    // section is paddingTop: 36 which accounts for queue number bleed;
-    // section header sits above that buffer so it doesn't collide.
-    marginTop: -24,
+  },
+  // Override for the Active Orders section: adds clearance for the queue number
+  // bleed (top: -28) and the halo circle above each card.
+  activeSectionHeader: {
+    marginBottom: 44,
   },
   sectionTitle: {
     fontFamily: Font.displayBold,
