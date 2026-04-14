@@ -56,6 +56,11 @@ function determineTier(points: number): 'Perunggu' | 'Perak' | 'Emas' {
   return 'Perunggu';
 }
 
+// SecureStore only permits [A-Za-z0-9._-] in keys. Colons were previously used
+// here and triggered "Invalid key" errors on Apple Sign In flows (Sentry: REACT-NATIVE-1).
+const appleIdentityKey = (userID: string) => `apple_identity_${userID}`;
+const appleEsbLinkKey = (userID: string) => `apple_esb_link_${userID}`;
+
 /** Persist user to AsyncStorage (authkey stripped for security). */
 async function persistUser(user: User) {
   await cacheSet(AUTH_USER_KEY, { ...user, authkey: '' });
@@ -162,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (displayName || email) {
         step = 'storeAppleIdentity';
         await SecureStore.setItemAsync(
-          `apple_identity:${appleUserID}`,
+          appleIdentityKey(appleUserID),
           JSON.stringify({ displayName, email }),
         );
       }
@@ -173,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!storedName || !storedEmail) {
         try {
           step = 'readAppleIdentity';
-          const stored = await SecureStore.getItemAsync(`apple_identity:${appleUserID}`);
+          const stored = await SecureStore.getItemAsync(appleIdentityKey(appleUserID));
           if (stored) {
             const parsed = JSON.parse(stored);
             storedName = storedName || parsed.displayName;
@@ -186,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let linkedData: { phone: string; authkey: string; branch: string } | null = null;
       try {
         step = 'readEsbLink';
-        const stored = await SecureStore.getItemAsync(`apple_esb_link:${appleUserID}`);
+        const stored = await SecureStore.getItemAsync(appleEsbLinkKey(appleUserID));
         if (stored) linkedData = JSON.parse(stored);
       } catch { /* ignore */ }
 
@@ -298,7 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Store the Apple ID ↔ ESB link for future session restores
     if (user.appleUserID) {
       await SecureStore.setItemAsync(
-        `apple_esb_link:${user.appleUserID}`,
+        appleEsbLinkKey(user.appleUserID),
         JSON.stringify({ phone, authkey, branch }),
       );
     }
@@ -328,8 +333,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cacheClear('cache:active_orders'),
       cacheClear('cache:order_history'),
       // Clear Apple-specific keys if applicable
-      appleUserID ? SecureStore.deleteItemAsync(`apple_esb_link:${appleUserID}`) : Promise.resolve(),
-      appleUserID ? SecureStore.deleteItemAsync(`apple_identity:${appleUserID}`) : Promise.resolve(),
+      appleUserID ? SecureStore.deleteItemAsync(appleEsbLinkKey(appleUserID)) : Promise.resolve(),
+      appleUserID ? SecureStore.deleteItemAsync(appleIdentityKey(appleUserID)) : Promise.resolve(),
     ]);
     setUser(null);
     setIsGuest(false);
