@@ -150,6 +150,7 @@ function AppNavigator() {
         <Stack.Screen name="order/callback" options={{ animation: 'fade' }} />
         <Stack.Screen name="payment-status" options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
         <Stack.Screen name="saved-locations" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="payment-methods" options={{ animation: 'slide_from_right' }} />
       </Stack>
     </>
   );
