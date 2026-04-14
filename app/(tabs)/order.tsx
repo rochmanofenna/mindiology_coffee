@@ -847,7 +847,9 @@ const styles = StyleSheet.create({
 
   /* ── Active order card — bleeds enabled ───────────────────────────── */
   activeCardOuter: {
-    marginBottom: Spacing.xl + 4,
+    // 44px = 28px queue bleed + 16px breathing room. Keeps the next card's
+    // queue number and halo out of the preceding card's footer.
+    marginBottom: 44,
     overflow: 'visible',
   },
   activeCard: {
