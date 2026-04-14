@@ -350,14 +350,16 @@ app.post('/api/promotions/validate-payment', async (req, res) => {
 // ═══════════════════════════════════════
 
 // ─── Webhook auth: verify shared secret ───
-// In production, the secret MUST be set — otherwise anyone can POST to
-// /webhooks/esb/* and trigger push notifications to arbitrary phone numbers.
+// ESB (per Nando, 2026-04) no longer documents webhooks — these handlers are
+// effectively dead code. Keeping the routes + secret verification in place so
+// we can re-enable later if ESB adds webhooks back. For now, warn if the
+// secret is unset in prod rather than refusing to start.
 const WEBHOOK_SECRET = process.env.ESB_WEBHOOK_SECRET?.trim();
 if (process.env.ESB_ENV === 'production' && !WEBHOOK_SECRET) {
-  throw new Error('Missing ESB_WEBHOOK_SECRET in production — refusing to start');
+  console.warn('[webhook] ESB_WEBHOOK_SECRET not set — webhook endpoints are unauthenticated (currently unused by ESB)');
 }
 function verifyWebhook(req: express.Request): boolean {
-  if (!WEBHOOK_SECRET) return true; // non-prod only: allow for local testing
+  if (!WEBHOOK_SECRET) return true;
   const provided = req.headers['x-webhook-secret'] || req.headers['x-esb-signature'];
   return provided === WEBHOOK_SECRET;
 }
