@@ -314,9 +314,6 @@ export const saveOrder = (branch: string, orderData: any, userToken?: string) =>
 export const getOrder = (orderId: string, branch: string) =>
   api(`/api/order/${orderId}`, { branch });
 
-export const encryptQrData = (branch: string, orderId: string) =>
-  api('/api/order/encrypt-qr-data', { body: { branch, orderID: orderId } });
-
 export interface PaymentValidateResponse {
   companyCode: string;
   branchCode: string;

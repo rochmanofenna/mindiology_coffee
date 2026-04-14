@@ -238,20 +238,6 @@ app.get('/api/order/:orderId', async (req, res) => {
   }
 });
 
-// POST /api/order/encrypt-qr-data — for Pay at Cashier flow
-app.post('/api/order/encrypt-qr-data', async (req, res) => {
-  try {
-    const { branch, ...body } = req.body;
-    validate(branch, PATTERNS.branch, 'branch');
-    const data = await esb('/qsv1/order/encrypt-qr-data', { method: 'POST', branch, body });
-    res.json(data);
-  } catch (err: any) {
-    console.error(`[encrypt-qr] Error:`, err.message || err);
-    const { status, body } = safeError(err);
-    res.status(status).json(body);
-  }
-});
-
 // GET /api/payment/validate/:orderId?branch=MIND1
 app.get('/api/payment/validate/:orderId', async (req, res) => {
   try {
