@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Dimensions,
-  ActivityIndicator, Alert, Platform, Image,
+  ActivityIndicator, Alert, Platform, Image, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -59,6 +59,18 @@ export default function WelcomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setLoadingWa(true);
     try {
+      // Apple Guideline 4.2.3(i): don't force users to install WhatsApp.
+      // Requires "whatsapp" in LSApplicationQueriesSchemes (see app.json).
+      const canOpenWhatsApp = await Linking.canOpenURL('whatsapp://send').catch(() => false);
+      if (!canOpenWhatsApp) {
+        Alert.alert(
+          'WhatsApp Tidak Tersedia',
+          'WhatsApp belum terinstall di perangkat ini. Silakan gunakan Sign in with Apple.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+
       const result = await sendWhatsAppOTP(currentBranchCode);
       const { otp, otpMessageUrl } = result.data;
       setPendingOtp({ otp, url: otpMessageUrl });

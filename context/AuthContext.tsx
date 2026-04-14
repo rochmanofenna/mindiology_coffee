@@ -139,97 +139,129 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ─── Sign in with Apple ───
   const loginWithApple = useCallback(async () => {
-    const credential = await AppleAuthentication.signInAsync({
-      requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
-      ],
-    });
-
-    const appleUserID = credential.user;
-    const email = credential.email ?? undefined;
-    const fullName = credential.fullName;
-    const displayName = fullName
-      ? [fullName.givenName, fullName.familyName].filter(Boolean).join(' ') || undefined
-      : undefined;
-
-    // Persist Apple identity on first sign-in (name/email only returned once)
-    if (displayName || email) {
-      await SecureStore.setItemAsync(
-        `apple_identity:${appleUserID}`,
-        JSON.stringify({ displayName, email }),
-      );
-    }
-
-    // Retrieve stored display name if this isn't the first sign-in
-    let storedName = displayName;
-    let storedEmail = email;
-    if (!storedName || !storedEmail) {
-      try {
-        const stored = await SecureStore.getItemAsync(`apple_identity:${appleUserID}`);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          storedName = storedName || parsed.displayName;
-          storedEmail = storedEmail || parsed.email;
-        }
-      } catch { /* ignore */ }
-    }
-
-    // Check for previously linked ESB account
-    let linkedData: { phone: string; authkey: string; branch: string } | null = null;
+    // Track which step we're on for Sentry diagnosis if anything throws.
+    // Apple rejected iPad (iPadOS 26.4.1) Apr 14 2026 with a generic error — this
+    // instrumentation makes the next failure pinpoint-able.
+    let step: string = 'signInAsync';
     try {
-      const stored = await SecureStore.getItemAsync(`apple_esb_link:${appleUserID}`);
-      if (stored) linkedData = JSON.parse(stored);
-    } catch { /* ignore */ }
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
 
-    if (linkedData?.authkey) {
-      // Restore linked ESB session
-      let memberData: any = null;
+      const appleUserID = credential.user;
+      const email = credential.email ?? undefined;
+      const fullName = credential.fullName;
+      const displayName = fullName
+        ? [fullName.givenName, fullName.familyName].filter(Boolean).join(' ') || undefined
+        : undefined;
+
+      // Persist Apple identity on first sign-in (name/email only returned once)
+      if (displayName || email) {
+        step = 'storeAppleIdentity';
+        await SecureStore.setItemAsync(
+          `apple_identity:${appleUserID}`,
+          JSON.stringify({ displayName, email }),
+        );
+      }
+
+      // Retrieve stored display name if this isn't the first sign-in
+      let storedName = displayName;
+      let storedEmail = email;
+      if (!storedName || !storedEmail) {
+        try {
+          step = 'readAppleIdentity';
+          const stored = await SecureStore.getItemAsync(`apple_identity:${appleUserID}`);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            storedName = storedName || parsed.displayName;
+            storedEmail = storedEmail || parsed.email;
+          }
+        } catch { /* ignore */ }
+      }
+
+      // Check for previously linked ESB account
+      let linkedData: { phone: string; authkey: string; branch: string } | null = null;
       try {
-        memberData = await checkMembership(linkedData.branch, linkedData.phone);
-      } catch { /* proceed with cached data */ }
+        step = 'readEsbLink';
+        const stored = await SecureStore.getItemAsync(`apple_esb_link:${appleUserID}`);
+        if (stored) linkedData = JSON.parse(stored);
+      } catch { /* ignore */ }
 
-      const restoredUser: User = {
-        phone: linkedData.phone,
-        authkey: linkedData.authkey,
-        name: memberData?.memberName || memberData?.name || storedName || storedEmail || 'Member',
-        memberCode: memberData?.memberCode || memberData?.memberID || '',
-        points: memberData?.totalPoint || memberData?.points || 0,
-        tier: determineTier(memberData?.totalPoint || 0),
-        appleUserID,
-        appleEmail: storedEmail,
-        loginMethod: 'apple',
-        esbLinked: true,
-      };
+      if (linkedData?.authkey) {
+        // Restore linked ESB session
+        let memberData: any = null;
+        try {
+          step = 'checkMembership';
+          memberData = await checkMembership(linkedData.branch, linkedData.phone);
+        } catch { /* proceed with cached data */ }
 
-      setUser(restoredUser);
-      setIsGuest(false);
-      await Promise.all([
-        persistUser(restoredUser),
-        SecureStore.setItemAsync('auth_token', linkedData.authkey),
-        storageRemove(GUEST_KEY),
-      ]);
-    } else {
-      // Apple-only session — no ESB link yet
-      const appleUser: User = {
-        phone: '',
-        authkey: '',
-        name: storedName || storedEmail || 'Member',
-        memberCode: '',
-        points: 0,
-        tier: 'Perunggu',
-        appleUserID,
-        appleEmail: storedEmail,
-        loginMethod: 'apple',
-        esbLinked: false,
-      };
+        const restoredUser: User = {
+          phone: linkedData.phone,
+          authkey: linkedData.authkey,
+          name: memberData?.memberName || memberData?.name || storedName || storedEmail || 'Member',
+          memberCode: memberData?.memberCode || memberData?.memberID || '',
+          points: memberData?.totalPoint || memberData?.points || 0,
+          tier: determineTier(memberData?.totalPoint || 0),
+          appleUserID,
+          appleEmail: storedEmail,
+          loginMethod: 'apple',
+          esbLinked: true,
+        };
 
-      setUser(appleUser);
-      setIsGuest(false);
-      await Promise.all([
-        persistUser(appleUser),
-        storageRemove(GUEST_KEY),
-      ]);
+        step = 'persistLinkedUser';
+        setUser(restoredUser);
+        setIsGuest(false);
+        await Promise.all([
+          persistUser(restoredUser),
+          SecureStore.setItemAsync('auth_token', linkedData.authkey),
+          storageRemove(GUEST_KEY),
+        ]);
+      } else {
+        // Apple-only session — no ESB link yet
+        const appleUser: User = {
+          phone: '',
+          authkey: '',
+          name: storedName || storedEmail || 'Member',
+          memberCode: '',
+          points: 0,
+          tier: 'Perunggu',
+          appleUserID,
+          appleEmail: storedEmail,
+          loginMethod: 'apple',
+          esbLinked: false,
+        };
+
+        step = 'persistAppleOnlyUser';
+        setUser(appleUser);
+        setIsGuest(false);
+        await Promise.all([
+          persistUser(appleUser),
+          storageRemove(GUEST_KEY),
+        ]);
+      }
+    } catch (err: any) {
+      // Don't report user cancellations — those are normal.
+      if (err?.code !== 'ERR_REQUEST_CANCELED') {
+        Sentry.captureException(err, {
+          tags: {
+            context: 'apple_sign_in',
+            step,
+            platform: Platform.OS,
+            isPad: String((Platform as any).isPad ?? false),
+          },
+          extra: {
+            errorCode: err?.code,
+            errorDomain: err?.domain,
+            errorMessage: err?.message,
+            nativeStackIOS: err?.nativeStackIOS,
+            osVersion: Platform.Version,
+          },
+        });
+      }
+      throw err;
     }
   }, []);
 
