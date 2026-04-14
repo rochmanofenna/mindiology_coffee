@@ -572,6 +572,10 @@ export default function CartScreen() {
             || result.redirectUrl || result.data?.redirectUrl
             || result.paymentUrl || result.data?.paymentUrl)
           : null;
+        // ESB returns qrString directly in the order response for QRIS — surfacing
+        // it to the payment-status screen lets us render the QR instantly instead
+        // of waiting for the first validatePayment poll (~4s saving).
+        const qrString = result.qrString || result.data?.qrString || '';
 
         addActiveOrder({
           orderId,
@@ -594,7 +598,14 @@ export default function CartScreen() {
           // QRIS or Cashier — navigate to payment status screen
           router.replace({
             pathname: '/payment-status',
-            params: { orderID: orderId, branchCode: currentBranchCode, queueNum, total: String(total), paymentMethod: paymentMethod || '' },
+            params: {
+              orderID: orderId,
+              branchCode: currentBranchCode,
+              queueNum,
+              total: String(total),
+              paymentMethod: paymentMethod || '',
+              qrString,
+            },
           } as any);
         }
       } else {

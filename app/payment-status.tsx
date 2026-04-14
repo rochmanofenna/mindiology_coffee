@@ -23,6 +23,7 @@ export default function PaymentStatusScreen() {
     queueNum?: string;
     total?: string;
     paymentMethod?: string;
+    qrString?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -37,6 +38,7 @@ export default function PaymentStatusScreen() {
   const paymentMethod = params.paymentMethod || '';
   const queueNum = params.queueNum || '';
   const total = params.total || '';
+  const initialQrString = params.qrString || '';
 
   const fmtRp = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
   const displayAmount = payData?.paymentTotal
@@ -63,6 +65,13 @@ export default function PaymentStatusScreen() {
     if (paymentMethod === 'cashier') {
       setMode('cashier');
       return;
+    }
+
+    // Fast path: cart already extracted qrString from the order response, so we
+    // can render the QR immediately while the first poll runs in the background.
+    if (initialQrString) {
+      setPayData(prev => prev ?? ({ qrString: initialQrString } as PaymentValidateResponse));
+      setMode('qris');
     }
 
     let pollTimer: ReturnType<typeof setInterval> | null = null;
