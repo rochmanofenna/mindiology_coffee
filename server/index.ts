@@ -349,10 +349,15 @@ app.post('/api/promotions/validate-payment', async (req, res) => {
 // 6. WEBHOOKS (ESB → your server)
 // ═══════════════════════════════════════
 
-// ─── Webhook auth: verify shared secret if configured ───
-const WEBHOOK_SECRET = process.env.ESB_WEBHOOK_SECRET;
+// ─── Webhook auth: verify shared secret ───
+// In production, the secret MUST be set — otherwise anyone can POST to
+// /webhooks/esb/* and trigger push notifications to arbitrary phone numbers.
+const WEBHOOK_SECRET = process.env.ESB_WEBHOOK_SECRET?.trim();
+if (process.env.ESB_ENV === 'production' && !WEBHOOK_SECRET) {
+  throw new Error('Missing ESB_WEBHOOK_SECRET in production — refusing to start');
+}
 function verifyWebhook(req: express.Request): boolean {
-  if (!WEBHOOK_SECRET) return true; // no secret configured — allow (log warning on startup)
+  if (!WEBHOOK_SECRET) return true; // non-prod only: allow for local testing
   const provided = req.headers['x-webhook-secret'] || req.headers['x-esb-signature'];
   return provided === WEBHOOK_SECRET;
 }
