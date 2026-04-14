@@ -25,16 +25,21 @@ function getApiBase(): string {
 
 const API = getApiBase();
 
-type Opts = { branch?: string; body?: any; method?: string };
+type Opts = { branch?: string; body?: any; method?: string; headers?: Record<string, string> };
 
 const api = async (path: string, opts: Opts = {}) => {
   const url = new URL(`${API}${path}`);
   if (opts.branch) url.searchParams.set('branch', opts.branch);
 
+  const headers: Record<string, string> = {
+    ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(opts.headers || {}),
+  };
+
   if (__DEV__) console.log(`[api] ${url}`);
   const res = await fetch(url.toString(), {
     method: opts.method || (opts.body ? 'POST' : 'GET'),
-    headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+    headers,
     ...(opts.body ? { body: JSON.stringify(opts.body) } : {}),
   });
   if (!res.ok) {
@@ -359,6 +364,21 @@ export const createReservation = (branch: string, data: any) =>
 
 export const getUserOrders = (userToken: string, page: number = 1) =>
   api('/api/user/orders', { body: { userToken, page } });
+
+export interface UserAddress {
+  addressID?: string | number;
+  addressId?: string | number;
+  label?: string;
+  fullAddress?: string;
+  address?: string;
+  note?: string;
+  latitude?: number;
+  longitude?: number;
+  isDefault?: boolean;
+}
+
+export const getUserAddresses = (userToken: string): Promise<UserAddress[] | { data: UserAddress[] }> =>
+  api('/api/user/addresses', { headers: { 'x-user-token': userToken } });
 
 export const registerPushToken = (phone: string, token: string) =>
   api('/api/push/register', { body: { phone, token } });
