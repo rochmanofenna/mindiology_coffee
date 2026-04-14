@@ -33,6 +33,8 @@ import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPaym
 import QRCode from 'react-native-qrcode-svg';
 import { useOrder } from '@/context/OrderContext';
 import { PhoneLinkSheet } from '@/components/PhoneLinkSheet';
+import { storageGet } from '@/utils/cache';
+import { PREFERRED_PAYMENT_KEY } from '@/app/payment-methods';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -281,17 +283,24 @@ export default function CartScreen() {
   const [promoLoading, setPromoLoading] = useState(false);
   const [showPhoneLinkSheet, setShowPhoneLinkSheet] = useState(false);
 
-  // Payment methods from branch settings (dynamic) or hardcoded fallback
+  // Payment methods from branch settings (dynamic) or hardcoded fallback.
+  // All ESB-listed methods are selectable; the universal payment-status screen
+  // handles whatever ESB returns (QRIS, redirect, cashier, etc.).
   const availablePayments = branchPaymentMethods.filter(m => m.available);
-  const comingSoonPayments = branchPaymentMethods.filter(m => !m.available);
 
-  // Auto-select first available payment method
+  // Preferred method (set from Metode Pembayaran screen) wins; else first available.
   useEffect(() => {
-    const firstAvailable = branchPaymentMethods.find(m => m.available);
-    if (!paymentMethod && firstAvailable) {
-      setPaymentMethod(firstAvailable.id);
-    }
-  }, []);
+    if (paymentMethod) return;
+    (async () => {
+      const preferred = await storageGet(PREFERRED_PAYMENT_KEY);
+      const match = preferred && availablePayments.find(m => m.id === preferred);
+      if (match) {
+        setPaymentMethod(match.id);
+      } else if (availablePayments[0]) {
+        setPaymentMethod(availablePayments[0].id);
+      }
+    })();
+  }, [branchPaymentMethods.length]);
 
   // Price calculations
   const tax = Math.round(subtotal * taxRate);
@@ -973,15 +982,6 @@ export default function CartScreen() {
               <Text style={styles.paymentName}>{method.name}</Text>
               {paymentMethod === method.id && <Ionicons name="checkmark-circle" size={20} color={Colors.green} />}
             </TouchableOpacity>
-          ))}
-          {comingSoonPayments.map((method) => (
-            <View key={method.id} style={[styles.paymentCard, styles.paymentCardDisabled]}>
-              <View style={styles.paymentIcon}>
-                <Ionicons name={method.icon as any} size={20} color={Colors.brownLight} />
-              </View>
-              <Text style={[styles.paymentName, { color: Colors.brownLight }]}>{method.name}</Text>
-              <Text style={styles.comingSoonText}>{method.comingSoonText}</Text>
-            </View>
           ))}
         </View>
 

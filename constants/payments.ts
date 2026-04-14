@@ -8,13 +8,13 @@ export interface PaymentMethod {
   icon: string; // Ionicon name
 }
 
-// Based on ESB branch settings: only DANA is available: true
-// OVO, QRIS, ShopeePay have warning messages indicating instability
-// atCashier is disabled (false) in ESB config
+// Fallback used only when branch settings haven't loaded yet. Real availability
+// comes from ESB branch.payment. All methods flow through the universal
+// payment-status screen so none require client-side filtering.
 export const PAYMENT_METHODS: PaymentMethod[] = [
   { id: 'dana', name: 'DANA', available: true, icon: 'wallet-outline' },
   { id: 'cashier', name: 'Bayar di Kasir', available: true, icon: 'cash-outline' },
-  { id: 'ovo', name: 'OVO', available: false, comingSoonText: 'Segera hadir', icon: 'wallet-outline' },
-  { id: 'qris', name: 'QRIS', available: false, comingSoonText: 'Segera hadir', icon: 'qr-code-outline' },
-  { id: 'shopeepay', name: 'ShopeePay', available: false, comingSoonText: 'Segera hadir', icon: 'cart-outline' },
+  { id: 'ovo', name: 'OVO', available: true, icon: 'wallet-outline' },
+  { id: 'qris', name: 'QRIS', available: true, icon: 'qr-code-outline' },
+  { id: 'shopeepay', name: 'ShopeePay', available: true, icon: 'cart-outline' },
 ];
