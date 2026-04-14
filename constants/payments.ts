@@ -8,13 +8,14 @@ export interface PaymentMethod {
   icon: string; // Ionicon name
 }
 
-// Fallback used only when branch settings haven't loaded yet. Real availability
-// comes from ESB branch.payment. All methods flow through the universal
-// payment-status screen so none require client-side filtering.
+// Fallback used only when branch settings haven't loaded yet. IDs MUST match
+// what ESB returns in branch.payment.online so a fallback-mode order doesn't
+// get rejected by the POS. Verified live against MCE on 2026-04-14.
 export const PAYMENT_METHODS: PaymentMethod[] = [
-  { id: 'dana', name: 'DANA', available: true, icon: 'wallet-outline' },
+  { id: 'danaesb', name: 'DANA', available: true, icon: 'wallet-outline' },
   { id: 'cashier', name: 'Bayar di Kasir', available: true, icon: 'cash-outline' },
-  { id: 'ovo', name: 'OVO', available: true, icon: 'wallet-outline' },
-  { id: 'qris', name: 'QRIS', available: true, icon: 'qr-code-outline' },
-  { id: 'shopeepay', name: 'ShopeePay', available: true, icon: 'cart-outline' },
+  { id: 'qrisesb', name: 'QRIS', available: true, icon: 'qr-code-outline' },
+  { id: 'ovoesb', name: 'OVO', available: true, icon: 'wallet-outline' },
+  { id: 'gopay', name: 'GoPay', available: true, icon: 'wallet-outline' },
+  { id: 'shopeeesb', name: 'ShopeePay', available: true, icon: 'cart-outline' },
 ];

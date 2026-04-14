@@ -130,7 +130,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
           // All ESB-listed methods are selectable — the universal payment-status
           // screen handles whatever ESB actually returns for this order.
           available: true,
-          icon: m.id === 'dana' ? 'wallet-outline' : m.id === 'ovo' ? 'wallet-outline' : m.id === 'qris' ? 'qr-code-outline' : m.id === 'shopeepay' ? 'cart-outline' : 'wallet-outline',
+          icon: m.id === 'qrisesb' ? 'qr-code-outline' : m.id === 'shopeeesb' ? 'cart-outline' : 'wallet-outline',
         });
       }
     }
