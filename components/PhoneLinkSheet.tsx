@@ -114,13 +114,16 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
 
   return (
     <Modal transparent statusBarTranslucent animationType="none">
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.kavRoot}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         {/* Backdrop */}
         <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
         </Animated.View>
 
-        {/* Panel */}
+        {/* Panel — flex child so KAV pushes it above the keyboard */}
         <Animated.View style={[styles.panel, { transform: [{ translateY: panelTranslateY }] }]}>
           {/* Handle bar */}
           <View style={styles.handleBar} />
@@ -206,15 +209,15 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
 }
 
 const styles = StyleSheet.create({
+  kavRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   panel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     minHeight: PANEL_HEIGHT,
     backgroundColor: Colors.cream,
     borderTopLeftRadius: 24,
