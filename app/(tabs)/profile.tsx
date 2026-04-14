@@ -11,16 +11,16 @@ import { useOrder } from '@/context/OrderContext';
 import { STORES } from '@/constants/stores';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const SETTINGS: { label: string; icon: keyof typeof Ionicons.glyphMap; route?: string; key?: string }[] = [
+type SettingItem = { label: string; icon: keyof typeof Ionicons.glyphMap; route?: string; action?: 'mailto'; key?: string };
+
+const SETTINGS: SettingItem[] = [
   { label: 'Barcode Member', icon: 'barcode-outline', route: '/barcode', key: 'barcode' },
   { label: 'Riwayat Pesanan', icon: 'receipt-outline', route: '/(tabs)/order' },
   { label: 'Reservasi Saya', icon: 'calendar-outline', route: '/reservation' },
-  { label: 'Metode Pembayaran', icon: 'card-outline', route: '/coming-soon?title=Metode+Pembayaran' },
-  { label: 'Lokasi Tersimpan', icon: 'location-outline', route: '/coming-soon?title=Lokasi+Tersimpan' },
-  { label: 'Notifikasi', icon: 'notifications-outline', route: '/coming-soon?title=Notifikasi' },
-  { label: 'Ajak Teman', icon: 'gift-outline', route: '/coming-soon?title=Ajak+Teman' },
+  { label: 'Metode Pembayaran', icon: 'card-outline', route: '/payment-methods' },
+  { label: 'Lokasi Tersimpan', icon: 'location-outline', route: '/saved-locations' },
   { label: 'Karir', icon: 'briefcase-outline', route: '/careers' },
-  { label: 'Bantuan', icon: 'help-circle-outline', route: '/coming-soon?title=Bantuan' },
+  { label: 'Bantuan', icon: 'help-circle-outline', action: 'mailto' },
 ];
 
 type TierKey = 'Perunggu' | 'Perak' | 'Emas';
@@ -55,12 +55,18 @@ export default function ProfileScreen() {
     Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`);
   };
 
-  const handleSettingPress = (item: typeof SETTINGS[number]) => {
+  const handleSettingPress = (item: SettingItem) => {
     if (item.key === 'barcode' && !user) {
       Alert.alert('Login Diperlukan', 'Silakan login terlebih dahulu untuk melihat barcode member.', [
         { text: 'Batal', style: 'cancel' },
         { text: 'Login', onPress: () => router.replace('/auth/welcome' as any) },
       ]);
+      return;
+    }
+    if (item.action === 'mailto') {
+      Linking.openURL('mailto:hello@kamarasan.app?subject=Bantuan%20Kamarasan').catch(() => {
+        Alert.alert('Bantuan', 'Hubungi kami di hello@kamarasan.app');
+      });
       return;
     }
     if (item.route) {

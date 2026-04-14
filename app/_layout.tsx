@@ -145,7 +145,6 @@ function AppNavigator() {
             animation: 'slide_from_right',
           }}
         />
-        <Stack.Screen name="coming-soon" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="auth/callback" options={{ animation: 'fade' }} />
         <Stack.Screen name="order/callback" options={{ animation: 'fade' }} />
         <Stack.Screen name="payment-status" options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
