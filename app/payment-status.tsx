@@ -53,6 +53,13 @@ export default function PaymentStatusScreen() {
 
   // ── Main polling lifecycle ────────────────────────────────────────────
   useEffect(() => {
+    // Guard against missing route params — otherwise validatePayment would fire
+    // with undefined args and the screen would stall on the loading state.
+    if (!orderID || !branchCode) {
+      setMode('expired');
+      return;
+    }
+
     if (paymentMethod === 'cashier') {
       setMode('cashier');
       return;

@@ -416,8 +416,17 @@ export default function CartScreen() {
     }
   };
 
+  // Guard against double-submit: the loading flag is async and slow connections
+  // can fire a second checkout before the first render blocks the button. A ref
+  // flips synchronously so double-taps never create duplicate ESB orders.
+  const checkoutLockRef = useRef(false);
+
   const handleCheckout = async () => {
+    if (checkoutLockRef.current) return;
+    checkoutLockRef.current = true;
+
     if (!user) {
+      checkoutLockRef.current = false;
       Alert.alert('Login Diperlukan', 'Silakan login terlebih dahulu untuk memesan', [
         { text: 'Login', onPress: () => router.push('/auth/welcome' as any) },
         { text: 'Batal', style: 'cancel' },
@@ -427,11 +436,13 @@ export default function CartScreen() {
 
     // Apple user without ESB link — need to link phone number first
     if (user.loginMethod === 'apple' && !user.esbLinked) {
+      checkoutLockRef.current = false;
       setShowPhoneLinkSheet(true);
       return;
     }
 
     if (!user.authkey) {
+      checkoutLockRef.current = false;
       Alert.alert('Sesi Berakhir', 'Silakan login ulang untuk memesan', [
         { text: 'Login', onPress: () => router.push('/auth/welcome' as any) },
         { text: 'Batal', style: 'cancel' },
@@ -636,6 +647,8 @@ export default function CartScreen() {
       } else {
         Alert.alert('Gagal Memproses Pesanan', msg || 'Terjadi kesalahan', [{ text: 'OK' }]);
       }
+    } finally {
+      checkoutLockRef.current = false;
     }
   };
 
