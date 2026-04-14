@@ -48,7 +48,7 @@ export default function WelcomeScreen() {
       router.replace('/');
     } catch (err: any) {
       if (err.code !== 'ERR_REQUEST_CANCELED') {
-        Alert.alert('Login Gagal', 'Terjadi kesalahan saat Sign in with Apple. Silakan coba lagi.');
+        Alert.alert('Sign In Failed', 'Something went wrong with Sign in with Apple. Please try again.');
       }
     } finally {
       setLoadingApple(false);
@@ -64,8 +64,8 @@ export default function WelcomeScreen() {
       const canOpenWhatsApp = await Linking.canOpenURL('whatsapp://send').catch(() => false);
       if (!canOpenWhatsApp) {
         Alert.alert(
-          'WhatsApp Tidak Tersedia',
-          'WhatsApp belum terinstall di perangkat ini. Silakan gunakan Sign in with Apple.',
+          'WhatsApp Not Available',
+          'WhatsApp is not installed on this device. Please use Sign in with Apple or Continue as Guest.',
           [{ text: 'OK' }],
         );
         return;
@@ -76,7 +76,7 @@ export default function WelcomeScreen() {
       setPendingOtp({ otp, url: otpMessageUrl });
       router.push('/auth/phone');
     } catch (err: any) {
-      Alert.alert('Gagal', err?.message || 'Tidak bisa menghubungi server. Coba lagi.');
+      Alert.alert('Failed', err?.message || 'Unable to reach the server. Please try again.');
     } finally {
       setLoadingWa(false);
     }
@@ -107,7 +107,7 @@ export default function WelcomeScreen() {
           <View style={styles.dividerLine} />
         </View>
 
-        <Text style={styles.tagline}>Pesan makanan & minuman favorit</Text>
+        <Text style={styles.tagline}>Order your favorite food & drinks</Text>
       </View>
 
       {/* ─── Center: Visual element ─── */}
@@ -127,7 +127,7 @@ export default function WelcomeScreen() {
             {loadingApple ? (
               <View style={styles.appleLoading}>
                 <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.appleLoadingText}>Menghubungkan...</Text>
+                <Text style={styles.appleLoadingText}>Connecting...</Text>
               </View>
             ) : (
               <AppleAuthentication.AppleAuthenticationButton
@@ -151,19 +151,19 @@ export default function WelcomeScreen() {
           {loadingWa ? (
             <>
               <ActivityIndicator color={Colors.green} size="small" style={{ marginRight: 8 }} />
-              <Text style={styles.waBtnText}>Menghubungkan...</Text>
+              <Text style={styles.waBtnText}>Connecting...</Text>
             </>
           ) : (
             <>
               <Ionicons name="logo-whatsapp" size={20} color={Colors.green} style={{ marginRight: 8 }} />
-              <Text style={styles.waBtnText}>Masuk dengan WhatsApp</Text>
+              <Text style={styles.waBtnText}>Sign in with WhatsApp</Text>
             </>
           )}
         </TouchableOpacity>
 
         {/* Guest mode — text link */}
         <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} activeOpacity={0.6} disabled={loading}>
-          <Text style={styles.guestText}>Lanjutkan sebagai Tamu</Text>
+          <Text style={styles.guestText}>Continue as Guest</Text>
           <Ionicons name="arrow-forward" size={14} color={Colors.textSoft} style={{ marginLeft: 4 }} />
         </TouchableOpacity>
 

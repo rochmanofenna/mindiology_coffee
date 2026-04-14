@@ -427,9 +427,9 @@ export default function CartScreen() {
 
     if (!user) {
       checkoutLockRef.current = false;
-      Alert.alert('Login Diperlukan', 'Silakan login terlebih dahulu untuk memesan', [
-        { text: 'Login', onPress: () => router.push('/auth/welcome' as any) },
-        { text: 'Batal', style: 'cancel' },
+      Alert.alert('Sign In Required', 'Please sign in first to place an order.', [
+        { text: 'Sign In', onPress: () => router.push('/auth/welcome' as any) },
+        { text: 'Cancel', style: 'cancel' },
       ]);
       return;
     }
@@ -443,9 +443,9 @@ export default function CartScreen() {
 
     if (!user.authkey) {
       checkoutLockRef.current = false;
-      Alert.alert('Sesi Berakhir', 'Silakan login ulang untuk memesan', [
-        { text: 'Login', onPress: () => router.push('/auth/welcome' as any) },
-        { text: 'Batal', style: 'cancel' },
+      Alert.alert('Session Expired', 'Please sign in again to place an order.', [
+        { text: 'Sign In', onPress: () => router.push('/auth/welcome' as any) },
+        { text: 'Cancel', style: 'cancel' },
       ]);
       return;
     }
