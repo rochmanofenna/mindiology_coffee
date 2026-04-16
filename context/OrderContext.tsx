@@ -17,6 +17,10 @@ const FIRST_POLL_DELAY_MS = 2_000;
 // Gives the user a moment to see the final state in the active list.
 const GRADUATE_DELAY_MS = 5_000;
 const HISTORY_PAGE_SIZE = 10;
+// Match payment-status.tsx: if validatePayment returns settlement but
+// flagPushToPOS isn't true after this window, mark the order as stuck so the
+// order card can show a recovery banner.
+const PAYMENT_STUCK_THRESHOLD_MS = 30_000;
 
 export type OrderStatus =
   | 'waiting_payment'
@@ -38,6 +42,13 @@ export interface Order {
   paymentMethodID?: string;
   /** ms timestamp of the most recent successful poll */
   lastPolledAt?: number;
+  /**
+   * Payment settled on ESB but the order never reached the POS terminal
+   * (validatePayment returned status=settlement with flagPushToPOS !== true
+   * after the stuck threshold). User paid real money — surface a banner so
+   * they can contact the branch.
+   */
+  paymentStuck?: boolean;
 }
 
 interface OrderState {
@@ -265,10 +276,33 @@ export function OrderProvider({ children }: { children: ReactNode }) {
     // Check payment validity while order is still in waiting_payment state.
     // If payment validate returns a terminal status (expired/failed), override to cancelled.
     let paymentTerminal: OrderStatus | null = null;
+    let paymentStuckNow = false;
     if (currentOrder.status === 'waiting_payment') {
       try {
         const payResult = await validatePayment(order.orderId, order.branchCode);
         paymentTerminal = extractPaymentTerminalStatus(payResult);
+
+        // Trust-critical: settlement + POS didn't receive after the grace window.
+        // We flag it here so the order tab can surface a recovery banner even
+        // if the user already closed the payment-status screen.
+        if (payResult?.status === 'settlement' && payResult?.flagPushToPOS !== true) {
+          const elapsed = Date.now() - new Date(currentOrder.createdAt).getTime();
+          if (elapsed > PAYMENT_STUCK_THRESHOLD_MS) {
+            paymentStuckNow = true;
+            if (!currentOrder.paymentStuck) {
+              Sentry.captureMessage('Active order settled but flagPushToPOS stayed false', {
+                level: 'warning',
+                tags: { context: 'payment_reconciliation', orderId: order.orderId },
+                extra: {
+                  branchCode: order.branchCode,
+                  elapsedMs: elapsed,
+                  paymentTotal: payResult?.paymentTotal,
+                  flagPushToPOS: payResult?.flagPushToPOS,
+                },
+              });
+            }
+          }
+        }
       } catch (err: any) {
         // Network errors are common during payment flow — only report non-404s.
         const status = err?.status ?? err?.response?.status;
@@ -301,7 +335,7 @@ export function OrderProvider({ children }: { children: ReactNode }) {
       setActiveOrders(prev =>
         prev.map(o =>
           o.orderId === order.orderId
-            ? { ...o, status: finalStatus, lastPolledAt: Date.now() }
+            ? { ...o, status: finalStatus, paymentStuck: paymentStuckNow, lastPolledAt: Date.now() }
             : o,
         ),
       );
@@ -324,6 +358,15 @@ export function OrderProvider({ children }: { children: ReactNode }) {
         }
         setTimeout(() => graduateToHistory(order.orderId), GRADUATE_DELAY_MS);
       }
+    } else if (paymentStuckNow !== !!currentOrder.paymentStuck) {
+      // Status unchanged but stuck-flag flipped — update without rerendering siblings.
+      setActiveOrders(prev =>
+        prev.map(o =>
+          o.orderId === order.orderId
+            ? { ...o, paymentStuck: paymentStuckNow, lastPolledAt: Date.now() }
+            : o,
+        ),
+      );
     } else {
       // Still update lastPolledAt so the UI can show "last checked X seconds ago".
       setActiveOrders(prev =>

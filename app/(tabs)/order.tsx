@@ -28,6 +28,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing, Radius, Shadow, fmtPrice } from '@/constants/theme';
+import { useBranch } from '@/context/BranchContext';
 import { useOrder, type Order, type OrderStatus } from '@/context/OrderContext';
 import { useAuth } from '@/context/AuthContext';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
@@ -321,6 +322,51 @@ function WaitingPaymentBanner({
   );
 }
 
+/* ── Stuck-payment banner — settlement confirmed but POS never received ── */
+
+function StuckPaymentBanner({ orderId, branchCode }: { orderId: string; branchCode: string }) {
+  const { branch } = useBranch();
+  const branchPhone = (branch?.branchCode === branchCode ? branch?.phone : '')?.replace(/[^\d]/g, '') || '';
+  const branchLabel = branch?.branchCode === branchCode ? (branch?.branchName || 'Outlet') : 'Outlet';
+
+  const onContact = useCallback(() => {
+    const message = encodeURIComponent(
+      `Halo, saya sudah membayar untuk pesanan #${orderId} tetapi pesanannya belum terlihat di outlet. Mohon bantuannya.`,
+    );
+    const url = branchPhone
+      ? `https://wa.me/${branchPhone}?text=${message}`
+      : `mailto:hello@kamarasan.app?subject=${encodeURIComponent(`Konfirmasi pesanan ${orderId}`)}&body=${message}`;
+    Linking.openURL(url).catch(() => {});
+  }, [branchPhone, orderId]);
+
+  return (
+    <View style={styles.stuckBanner}>
+      <View style={styles.stuckIconWrap}>
+        <AlertDot />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.stuckTitle}>Pembayaran Diterima</Text>
+        <Text style={styles.stuckSubtitle}>
+          Pesanan belum dikonfirmasi outlet. Hubungi {branchLabel} dengan nomor pesanan di atas.
+        </Text>
+        <TouchableOpacity activeOpacity={0.8} style={styles.stuckAction} onPress={onContact}>
+          <Text style={styles.stuckActionText}>
+            {branchPhone ? `Hubungi ${branchLabel}` : 'Email Dukungan'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function AlertDot() {
+  return (
+    <View style={styles.alertDot}>
+      <Text style={styles.alertDotMark}>!</Text>
+    </View>
+  );
+}
+
 /* ── Active order card (expandable) ───────────────────────────────────── */
 
 function ActiveOrderCard({ order }: { order: Order }) {
@@ -329,6 +375,7 @@ function ActiveOrderCard({ order }: { order: Order }) {
 
   const isWaitingPayment = order.status === 'waiting_payment';
   const isCancelled = order.status === 'cancelled';
+  const isPaymentStuck = !!order.paymentStuck;
   const queueState: 'active' | 'waiting' | 'cancelled' =
     isCancelled ? 'cancelled' : isWaitingPayment ? 'waiting' : 'active';
 
@@ -416,13 +463,15 @@ function ActiveOrderCard({ order }: { order: Order }) {
             {itemCount} item · {fmtPrice(order.total / 1000)}
           </Text>
 
-          {/* Waiting payment banner */}
-          {isWaitingPayment && (
+          {/* Waiting payment banner — stuck variant wins when payment settled but POS didn't receive */}
+          {isWaitingPayment && isPaymentStuck ? (
+            <StuckPaymentBanner orderId={order.orderId} branchCode={order.branchCode} />
+          ) : isWaitingPayment ? (
             <WaitingPaymentBanner
               paymentMethodID={order.paymentMethodID}
               onOpenPayment={handleOpenPayment}
             />
-          )}
+          ) : null}
 
           {/* Status stepper — dimmed if waiting_payment, hidden if cancelled */}
           {!isCancelled && <StatusStepper status={order.status} dim={isWaitingPayment} />}
@@ -1034,6 +1083,70 @@ const styles = StyleSheet.create({
     fontFamily: Font.bold,
     fontSize: 12,
     color: Colors.gold,
+  },
+
+  /* ── Stuck-payment banner (settlement + !flagPushToPOS) ─────────────── */
+  stuckBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(196,58,75,0.1)',
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md + 2,
+    borderWidth: 1,
+    borderColor: 'rgba(196,58,75,0.4)',
+  },
+  stuckIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(196,58,75,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(196,58,75,0.45)',
+  },
+  alertDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.hibiscus,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertDotMark: {
+    fontFamily: Font.bold,
+    fontSize: 13,
+    color: '#fff',
+    lineHeight: 14,
+  },
+  stuckTitle: {
+    fontFamily: Font.bold,
+    fontSize: 14,
+    color: Colors.hibiscus,
+    marginBottom: 3,
+    letterSpacing: -0.1,
+  },
+  stuckSubtitle: {
+    fontFamily: Font.regular,
+    fontSize: 12,
+    color: Dark.textPrimary,
+    lineHeight: 17,
+    opacity: 0.9,
+  },
+  stuckAction: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.hibiscus,
+  },
+  stuckActionText: {
+    fontFamily: Font.bold,
+    fontSize: 12,
+    color: '#fff',
   },
 
   /* ── Stepper ──────────────────────────────────────────────────────── */
