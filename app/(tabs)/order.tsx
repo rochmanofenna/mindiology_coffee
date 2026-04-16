@@ -29,6 +29,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Colors, Font, Spacing, Radius, Shadow, fmtPrice } from '@/constants/theme';
 import { useBranch } from '@/context/BranchContext';
+import { getBranchPhoneDigits } from '@/constants/stores';
 import { useOrder, type Order, type OrderStatus } from '@/context/OrderContext';
 import { useAuth } from '@/context/AuthContext';
 import { SkeletonLoader } from '@/components/SkeletonLoader';
@@ -326,12 +327,15 @@ function WaitingPaymentBanner({
 
 function StuckPaymentBanner({ orderId, branchCode }: { orderId: string; branchCode: string }) {
   const { branch } = useBranch();
-  const branchPhone = (branch?.branchCode === branchCode ? branch?.phone : '')?.replace(/[^\d]/g, '') || '';
-  const branchLabel = branch?.branchCode === branchCode ? (branch?.branchName || 'Outlet') : 'Outlet';
+  // Prefer live branch settings phone (when the viewer is on the same branch),
+  // fall back to STORES lookup, fall back again to mailto support.
+  const livePhone = branch?.branchCode === branchCode ? branch?.phone : '';
+  const branchPhone = getBranchPhoneDigits(branchCode, livePhone);
+  const branchLabel = branch?.branchCode === branchCode ? (branch?.branchName || 'kasir') : 'kasir';
 
   const onContact = useCallback(() => {
     const message = encodeURIComponent(
-      `Halo, saya sudah membayar untuk pesanan #${orderId} tetapi pesanannya belum terlihat di outlet. Mohon bantuannya.`,
+      `Halo, pembayaran untuk pesanan #${orderId} sudah berhasil, tetapi pesanan belum masuk ke kitchen. Mohon dibantu push manual dari ESB Order Dashboard.`,
     );
     const url = branchPhone
       ? `https://wa.me/${branchPhone}?text=${message}`
@@ -347,7 +351,7 @@ function StuckPaymentBanner({ orderId, branchCode }: { orderId: string; branchCo
       <View style={{ flex: 1 }}>
         <Text style={styles.stuckTitle}>Pembayaran Diterima</Text>
         <Text style={styles.stuckSubtitle}>
-          Pesanan belum dikonfirmasi outlet. Hubungi {branchLabel} dengan nomor pesanan di atas.
+          Ada kendala teknis saat pengiriman ke kitchen. Tunjukkan nomor pesanan ke {branchLabel} — mereka bisa memproses langsung dari POS.
         </Text>
         <TouchableOpacity activeOpacity={0.8} style={styles.stuckAction} onPress={onContact}>
           <Text style={styles.stuckActionText}>

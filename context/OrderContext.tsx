@@ -78,6 +78,10 @@ const ESB_ORDER_STATUS_MAP: Record<string, OrderStatus> = {
   'confirmed': 'received',
   'received': 'received',
   'diterima': 'received',
+  // ESB also returns multi-word variants after manual POS push:
+  'order confirmed': 'received',
+  'order accepted': 'received',
+  'order received': 'received',
   'processing': 'processing',
   'inprogress': 'processing',
   'in_progress': 'processing',
