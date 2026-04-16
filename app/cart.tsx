@@ -1,5 +1,5 @@
 // app/cart.tsx — Premium Cart & Checkout Screen
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -176,6 +176,23 @@ export default function CartScreen() {
   const { addActiveOrder } = useOrder();
 
   const [orderMode, setOrderMode] = useState<OrderMode>('takeAway');
+  // Filter the mode toggle to what ESB actually supports for this branch.
+  // KCG, for example, only returns ['takeAway'] — showing Dine In there
+  // would let the user build a cart just to hit an error at checkout.
+  const supportedModes = useMemo(
+    () => ORDER_MODES.filter(m => !!branchData?.orderModes?.find(om => om.type === m.key)),
+    [branchData?.orderModes],
+  );
+  // If the current mode isn't supported at the newly-loaded branch (e.g. user
+  // switched branches while keeping their selection), fall back to the first
+  // supported one. Skip until branchData has loaded — don't reset on empty.
+  useEffect(() => {
+    if (supportedModes.length === 0) return;
+    if (!supportedModes.find(m => m.key === orderMode)) {
+      setOrderMode(supportedModes[0].key);
+    }
+  }, [supportedModes, orderMode]);
+
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [lastOrder, setLastOrder] = useState<{
@@ -755,9 +772,9 @@ export default function CartScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ---- Order Mode Selector ---- */}
+        {/* ---- Order Mode Selector — only modes this branch actually supports ---- */}
         <View style={styles.modeRow}>
-          {ORDER_MODES.map((m) => {
+          {supportedModes.map((m) => {
             const active = orderMode === m.key;
             return (
               <TouchableOpacity
