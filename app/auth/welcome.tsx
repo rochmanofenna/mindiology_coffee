@@ -33,11 +33,16 @@ export default function WelcomeScreen() {
   const [loadingWa, setLoadingWa] = useState(false);
   const [loadingApple, setLoadingApple] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  // Apple Guideline 4.2.3(i): only surface the WhatsApp option if WhatsApp is
+  // actually installed — never ask the user to install an external app.
+  // Requires "whatsapp" in LSApplicationQueriesSchemes (see app.json).
+  const [hasWhatsApp, setHasWhatsApp] = useState(false);
 
   useEffect(() => {
     if (Platform.OS === 'ios') {
       AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => {});
     }
+    Linking.canOpenURL('whatsapp://send').then(setHasWhatsApp).catch(() => setHasWhatsApp(false));
   }, []);
 
   const handleAppleSignIn = async () => {
@@ -59,18 +64,6 @@ export default function WelcomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     setLoadingWa(true);
     try {
-      // Apple Guideline 4.2.3(i): don't force users to install WhatsApp.
-      // Requires "whatsapp" in LSApplicationQueriesSchemes (see app.json).
-      const canOpenWhatsApp = await Linking.canOpenURL('whatsapp://send').catch(() => false);
-      if (!canOpenWhatsApp) {
-        Alert.alert(
-          'WhatsApp Not Available',
-          'WhatsApp is not installed on this device. Please use Sign in with Apple or Continue as Guest.',
-          [{ text: 'OK' }],
-        );
-        return;
-      }
-
       const result = await sendWhatsAppOTP(currentBranchCode);
       const { otp, otpMessageUrl } = result.data;
       setPendingOtp({ otp, url: otpMessageUrl });
@@ -142,24 +135,27 @@ export default function WelcomeScreen() {
         )}
 
         {/* Sign in with WhatsApp — SECONDARY (outline style) */}
-        <TouchableOpacity
-          activeOpacity={0.7}
-          onPress={handleWhatsApp}
-          disabled={loading}
-          style={styles.waBtn}
-        >
-          {loadingWa ? (
-            <>
-              <ActivityIndicator color={Colors.green} size="small" style={{ marginRight: 8 }} />
-              <Text style={styles.waBtnText}>Connecting...</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="logo-whatsapp" size={20} color={Colors.green} style={{ marginRight: 8 }} />
-              <Text style={styles.waBtnText}>Sign in with WhatsApp</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {/* Hidden entirely when WhatsApp is not installed (Apple Guideline 4.2.3(i)). */}
+        {hasWhatsApp && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleWhatsApp}
+            disabled={loading}
+            style={styles.waBtn}
+          >
+            {loadingWa ? (
+              <>
+                <ActivityIndicator color={Colors.green} size="small" style={{ marginRight: 8 }} />
+                <Text style={styles.waBtnText}>Connecting...</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="logo-whatsapp" size={20} color={Colors.green} style={{ marginRight: 8 }} />
+                <Text style={styles.waBtnText}>Sign in with WhatsApp</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
         {/* Guest mode — text link */}
         <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} activeOpacity={0.6} disabled={loading}>
