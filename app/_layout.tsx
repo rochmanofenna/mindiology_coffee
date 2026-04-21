@@ -1,5 +1,5 @@
 // app/_layout.tsx
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { useRouter } from 'expo-router';
@@ -16,6 +16,7 @@ import { ReservationProvider } from '@/context/ReservationContext';
 import { OrderProvider } from '@/context/OrderContext';
 import { Colors } from '@/constants/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import AnimatedSplash from '@/components/AnimatedSplash';
 import * as WebBrowser from 'expo-web-browser';
 import { registerForPushNotifications } from '@/utils/notifications';
 import { registerPushToken } from '@/services/api';
@@ -155,6 +156,25 @@ function AppNavigator() {
   );
 }
 
+// AppShell renders the router + the animated splash overlay. Lives inside
+// AuthProvider so the splash can read auth loading state and exit only once
+// the first real route is ready to receive the user.
+function AppShell() {
+  const { isLoading } = useAuth();
+  const [splashDone, setSplashDone] = useState(false);
+  return (
+    <>
+      <AppNavigator />
+      {!splashDone && (
+        <AnimatedSplash
+          isReady={!isLoading}
+          onFinish={() => setSplashDone(true)}
+        />
+      )}
+    </>
+  );
+}
+
 function RootLayout() {
   const [dmLoaded, dmError] = useDMSans({
     DMSans_400Regular,
@@ -172,12 +192,8 @@ function RootLayout() {
   // Proceed once fonts load OR fail — never block the app
   const ready = (dmLoaded || dmError) && (frauncesLoaded || frauncesError);
 
-  useEffect(() => {
-    if (ready) {
-      SplashScreen.hideAsync();
-    }
-  }, [ready]);
-
+  // Native splash stays visible until fonts resolve (handoff is seamless:
+  // AnimatedSplash calls SplashScreen.hideAsync() itself on mount).
   if (!ready) return null;
 
   return (
@@ -188,7 +204,7 @@ function RootLayout() {
           <CartProvider>
             <ReservationProvider>
               <OrderProvider>
-                <AppNavigator />
+                <AppShell />
               </OrderProvider>
             </ReservationProvider>
           </CartProvider>

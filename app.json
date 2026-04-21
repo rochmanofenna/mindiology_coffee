@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "scheme": "kamarasan",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FDF6EC"
     },
