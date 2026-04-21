@@ -224,6 +224,27 @@ app.post('/api/order', async (req, res) => {
   }
 });
 
+// POST /api/order/qr-data — Bayar di Kasir (Pay at Cashier)
+// ESB exposes a DIFFERENT endpoint for cashier orders than for online payment
+// orders (/qsv1/order). The response includes a qrData string the customer
+// displays on-screen; the cashier scans it from the POS to finalize the order.
+// No paymentMethodID, no amount, no calculate-total — ESB doesn't charge the
+// customer here, it just registers the order and returns the handoff QR.
+app.post('/api/order/qr-data', async (req, res) => {
+  try {
+    const { branch, ...orderData } = req.body;
+    validate(branch, PATTERNS.branch, 'branch');
+    console.log(`[order-qr] Submitting cashier QR order to ESB for branch ${branch}`);
+    const data = await esb('/qsv1/order/qrData', { method: 'POST', branch, body: orderData });
+    console.log(`[order-qr] ESB response: orderID=${data?.orderID || data?.data?.orderID || 'unknown'}`);
+    res.json(data);
+  } catch (err: any) {
+    console.error(`[order-qr] ESB error:`, err.message || err);
+    const { status, body } = safeError(err);
+    res.status(status).json(body);
+  }
+});
+
 // GET /api/order/:orderId?branch=MIND1
 app.get('/api/order/:orderId', async (req, res) => {
   try {

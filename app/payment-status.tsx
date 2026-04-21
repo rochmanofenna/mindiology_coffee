@@ -57,6 +57,7 @@ export default function PaymentStatusScreen() {
     total?: string;
     paymentMethod?: string;
     qrString?: string;
+    qrData?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -76,6 +77,7 @@ export default function PaymentStatusScreen() {
   const queueNum = params.queueNum || '';
   const total = params.total || '';
   const initialQrString = params.qrString || '';
+  const cashierQrData = params.qrData || '';
 
   const fmtRp = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
   const displayAmount = payData?.paymentTotal
@@ -454,18 +456,40 @@ export default function PaymentStatusScreen() {
   }
 
   if (mode === 'cashier') {
+    // New flow (2026-04-22): /qsv1/order/qrData returns a QR the customer
+    // shows on-screen; the cashier scans it from their POS to finalize. The
+    // older queue-number-only fallback still renders if qrData is missing.
     return (
       <View style={[s.container, padStyle]}>
         <Text style={s.header}>Bayar di Kasir</Text>
-        <View style={s.queueBox}>
-          <Text style={s.queueLabel}>Nomor Antrian</Text>
-          <Text style={s.queueNum}>{queueNum || '-'}</Text>
-        </View>
+        {cashierQrData ? (
+          <>
+            <Text style={s.subtitle}>Tunjukkan QR ini ke kasir untuk memproses pesananmu</Text>
+            <View style={[s.qrCard, { marginTop: 16 }]}>
+              <QRCode value={cashierQrData} size={240} backgroundColor="#fff" color={Colors.text} />
+            </View>
+          </>
+        ) : (
+          <View style={s.queueBox}>
+            <Text style={s.queueLabel}>Nomor Antrian</Text>
+            <Text style={s.queueNum}>{queueNum || '-'}</Text>
+          </View>
+        )}
         {displayAmount ? <Text style={s.amount}>{displayAmount}</Text> : null}
+        {orderID ? (
+          <View style={s.orderIdBox}>
+            <Text style={s.orderIdLabel}>Nomor Pesanan</Text>
+            <Text style={s.orderIdValue}>{orderID}</Text>
+          </View>
+        ) : null}
         {branch?.branchName ? (
           <Text style={s.branchName}>{branch.branchName}</Text>
         ) : null}
-        <Text style={s.hint}>Tunjukkan nomor antrian ini ke kasir</Text>
+        <Text style={s.hint}>
+          {cashierQrData
+            ? 'Kasir akan scan QR ini dari POS'
+            : 'Tunjukkan nomor antrian ini ke kasir'}
+        </Text>
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => router.replace('/(tabs)/order' as any)}

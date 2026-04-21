@@ -311,6 +311,19 @@ export const calculateTotal = (branch: string, orderData: any) =>
 export const saveOrder = (branch: string, orderData: any, userToken?: string) =>
   api('/api/order', { body: { branch, userToken, ...orderData } });
 
+// Bayar di Kasir — ESB returns a qrData string for the cashier to scan from
+// their POS. No amount/paymentMethodID in the request, no qrString/redirectURL
+// in the response. Orders are finalized the moment ESB acknowledges.
+export interface CashierQRResponse {
+  qrData?: string;
+  orderID?: string;
+  queueNum?: string;
+  data?: { qrData?: string; orderID?: string; queueNum?: string };
+}
+
+export const createCashierOrder = (branch: string, orderData: any): Promise<CashierQRResponse> =>
+  api('/api/order/qr-data', { body: { branch, ...orderData } });
+
 export const getOrder = (orderId: string, branch: string) =>
   api(`/api/order/${orderId}`, { branch });
 

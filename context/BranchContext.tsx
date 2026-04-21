@@ -134,7 +134,10 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         });
       }
     }
-    // Pay at cashier
+    // Pay at cashier — uses a SEPARATE ESB endpoint (/qsv1/order/qrData), not
+    // /qsv1/order. Returns a qrData string the customer shows to the cashier,
+    // who scans it from their POS to finalize. Confirmed by Felix @ ESB
+    // 2026-04-22. See handleCheckout in app/cart.tsx for the branching.
     if (branch.payment.atCashier) {
       methods.push({ id: 'cashier', name: 'Bayar di Kasir', available: true, icon: 'cash-outline' });
     }

@@ -28,7 +28,7 @@ import { useBranch } from '@/context/BranchContext';
 import { useCart, type CartItem } from '@/context/CartContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
-import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPayment, checkDeliveryDistance, getCourierCost } from '@/services/api';
+import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPayment, checkDeliveryDistance, getCourierCost, createCashierOrder } from '@/services/api';
 // Google Places autocomplete built inline — avoids broken react-native-uuid dep
 import QRCode from 'react-native-qrcode-svg';
 import { useOrder } from '@/context/OrderContext';
@@ -500,6 +500,65 @@ export default function CartScreen() {
 
         const phone62 = phoneFormatted.startsWith('62') ? phoneFormatted : `62${phoneFormatted}`;
 
+        // ── Bayar di Kasir branch ─────────────────────────────────────────
+        // Uses a SEPARATE ESB endpoint (/qsv1/order/qrData) wrapped by
+        // createCashierOrder. No calculate-total, no saveOrder, no payment
+        // polling — customer shows the returned qrData to the cashier, who
+        // scans from their POS to finalize the order. (Felix @ ESB 2026-04-22)
+        if (paymentMethod === 'cashier') {
+          const cashierPayload = {
+            orderType: orderMode,
+            orderTypeName: null,
+            visitPurposeID,
+            fullName: user?.name || 'Guest',
+            email: '',
+            phoneNumber: phone62,
+            deliveryAddress: orderMode === 'delivery' ? deliveryAddress : '',
+            deliveryAddressInfo: '',
+            latitude: orderMode === 'delivery' && deliveryLat ? deliveryLat : (branchData?.latitude ?? -6.287),
+            longitude: orderMode === 'delivery' && deliveryLng ? deliveryLng : (branchData?.longitude ?? 106.716),
+            memberID: user?.memberCode || '',
+            salesMenus,
+            tableName: orderMode === 'dineIn' ? tableNumber || null : null,
+            scheduledAt: null,
+            deliveryCourierID: orderMode === 'delivery' ? deliveryCourierID : 0,
+            userToken: user?.authkey || '',
+          };
+
+          const cashierResult = await createCashierOrder(currentBranchCode, cashierPayload);
+          const qrData = cashierResult.qrData || cashierResult.data?.qrData || '';
+          orderId = cashierResult.orderID || cashierResult.data?.orderID || '';
+          queueNum = cashierResult.queueNum || cashierResult.data?.queueNum || '';
+          if (!qrData || !orderId) throw new Error('Gagal membuat pesanan Bayar di Kasir');
+
+          addActiveOrder({
+            orderId,
+            queueNum,
+            status: 'received',
+            items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
+            total,
+            orderMode,
+            createdAt: new Date().toISOString(),
+            branchCode: currentBranchCode,
+            paymentMethodID: 'cashier',
+          });
+          clearCart();
+          setLoading(false);
+
+          router.replace({
+            pathname: '/payment-status',
+            params: {
+              orderID: orderId,
+              branchCode: currentBranchCode,
+              queueNum,
+              total: String(total),
+              paymentMethod: 'cashier',
+              qrData,
+            },
+          } as any);
+          return;
+        }
+
         // Step 1: Calculate Total — get ESB-verified amount
         const calcPayload = {
           visitPurposeID,
@@ -583,12 +642,9 @@ export default function CartScreen() {
         orderId = result.orderID || result.data?.orderID || result.id || '';
         queueNum = result.queueNum || result.data?.queueNum || '';
 
-        const isCashier = paymentMethod === 'cashier';
-        const redirectURL = !isCashier
-          ? (result.redirectURL || result.data?.redirectURL
-            || result.redirectUrl || result.data?.redirectUrl
-            || result.paymentUrl || result.data?.paymentUrl)
-          : null;
+        const redirectURL = result.redirectURL || result.data?.redirectURL
+          || result.redirectUrl || result.data?.redirectUrl
+          || result.paymentUrl || result.data?.paymentUrl;
         // ESB returns qrString directly in the order response for QRIS — surfacing
         // it to the payment-status screen lets us render the QR instantly instead
         // of waiting for the first validatePayment poll (~4s saving).
@@ -597,7 +653,7 @@ export default function CartScreen() {
         addActiveOrder({
           orderId,
           queueNum,
-          status: isCashier ? 'received' : 'waiting_payment',
+          status: 'waiting_payment',
           items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
           total,
           orderMode,
@@ -612,7 +668,7 @@ export default function CartScreen() {
           // DANA/OVO — open payment app, callback handles navigation to payment-status
           Linking.openURL(redirectURL).catch(() => {});
         } else {
-          // QRIS or Cashier — navigate to payment status screen
+          // QRIS — navigate to payment status screen
           router.replace({
             pathname: '/payment-status',
             params: {
