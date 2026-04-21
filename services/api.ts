@@ -234,11 +234,15 @@ export function transformMenuResponse(data: ESBMenuResponse): {
   const allItems: AppMenuItem[] = [];
 
   for (const cat of data.menuCategories) {
-    if (!cat.menuCategoryCode) continue;
+    // MCE (and likely other production branches) leaves menuCategoryCode empty
+    // for every category except one or two — the old `if (!code) continue`
+    // here dropped 13 of 14 MCE categories and left only "Coffee" visible.
+    // Keys are synthesized from menuCategoryID for untagged groups.
     const catKeys: string[] = [];
 
     for (const detail of cat.menuCategoryDetails) {
-      const key = detail.menuCategoryDetailCode || `cat-${detail.menuCategoryDetailID}`;
+      const detailCode = detail.menuCategoryDetailCode || '';
+      const key = detailCode || `cat-${detail.menuCategoryDetailID}`;
       const items = detail.menus
         .map(transformMenuItem)
         .filter(m => m.apiPrice > 0);
@@ -249,7 +253,7 @@ export function transformMenuResponse(data: ESBMenuResponse): {
       menu[key] = {
         key,
         label: detail.menuCategoryDetailDesc,
-        emoji: getCategoryEmoji(detail.menuCategoryDetailCode),
+        emoji: getCategoryEmoji(detailCode),
         items,
         firstImageUrl: firstImage,
       };
@@ -259,8 +263,8 @@ export function transformMenuResponse(data: ESBMenuResponse): {
 
     if (catKeys.length === 0) continue;
 
-    const groupConfig = TAB_GROUP_MAP[cat.menuCategoryCode] || {
-      label: cat.menuCategoryDesc,
+    const groupConfig = (cat.menuCategoryCode && TAB_GROUP_MAP[cat.menuCategoryCode]) || {
+      label: cat.menuCategoryDesc || 'Lainnya',
       icon: '🍽',
     };
 
