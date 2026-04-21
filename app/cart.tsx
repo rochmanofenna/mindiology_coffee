@@ -33,6 +33,7 @@ import { saveOrder, calculateTotal, getPromotions, checkItems, validatePromoPaym
 import QRCode from 'react-native-qrcode-svg';
 import { useOrder } from '@/context/OrderContext';
 import { PhoneLinkSheet } from '@/components/PhoneLinkSheet';
+import { setPendingCashierQr } from './payment-status';
 import { storageGet } from '@/utils/cache';
 import { PREFERRED_PAYMENT_KEY } from '@/app/payment-methods';
 
@@ -552,6 +553,10 @@ export default function CartScreen() {
           clearCart();
           setLoading(false);
 
+          // qrData is a base64-encoded encrypted blob (+, /, =) — passing it
+          // through URL params corrupts `+` to space and breaks POS decoding.
+          // Hand it off via module-level state instead. See payment-status.tsx.
+          setPendingCashierQr(qrData);
           router.replace({
             pathname: '/payment-status',
             params: {
@@ -560,7 +565,6 @@ export default function CartScreen() {
               queueNum,
               total: String(total),
               paymentMethod: 'cashier',
-              qrData,
             },
           } as any);
           return;

@@ -14,6 +14,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBranch } from '@/context/BranchContext';
 import { getBranchPhoneDigits } from '@/constants/stores';
 
+// Bayar di Kasir qrData handoff — kept in module-level state instead of
+// route params because the base64 payload contains `+`, `/`, `=` which get
+// mangled through expo-router URL serialization (+ → space). Corrupted qrData
+// means POS scans garbage, silently rejects. Same pattern as welcome.tsx's
+// pendingOtp. Consumed once on mount; held in a ref so re-renders keep it.
+let pendingCashierQr: string | null = null;
+export function setPendingCashierQr(qr: string) { pendingCashierQr = qr; }
+export function consumePendingCashierQr() {
+  const v = pendingCashierQr;
+  pendingCashierQr = null;
+  return v;
+}
+
 const POLL_INTERVAL = 4_000;
 // Once we're in paid_but_not_pushed, slow the poll to conserve battery —
 // the cashier may take a minute or more to act on the POS popup.
@@ -57,7 +70,6 @@ export default function PaymentStatusScreen() {
     total?: string;
     paymentMethod?: string;
     qrString?: string;
-    qrData?: string;
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -77,7 +89,9 @@ export default function PaymentStatusScreen() {
   const queueNum = params.queueNum || '';
   const total = params.total || '';
   const initialQrString = params.qrString || '';
-  const cashierQrData = params.qrData || '';
+  // Held in a ref so re-renders don't re-consume (consume is destructive).
+  const cashierQrDataRef = useRef<string>(consumePendingCashierQr() || '');
+  const cashierQrData = cashierQrDataRef.current;
 
   const fmtRp = (n: number) => `Rp ${n.toLocaleString('id-ID')}`;
   const displayAmount = payData?.paymentTotal
