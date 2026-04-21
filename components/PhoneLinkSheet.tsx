@@ -1,9 +1,18 @@
 // components/PhoneLinkSheet.tsx — Bottom sheet for linking phone number at checkout
-// Shown to Apple Sign In users who haven't linked an ESB account yet
+// Shown to Apple Sign In users who haven't linked an ESB account yet.
+//
+// Two modes:
+//   A. hasWhatsApp=true  → Full WhatsApp OTP flow, links ESB account with authkey.
+//   B. hasWhatsApp=false → Phone input only (no OTP, no external app). Apple
+//      Guideline 4.2.3(i): we cannot require users to install WhatsApp. Mode B
+//      saves the phone to user state locally and lets checkout proceed with
+//      ESB_STATIC_TOKEN (company auth) — no per-user authkey is needed for
+//      /qsv1/order (see server/index.ts:87).
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Animated, Dimensions, Modal, Pressable, View, Text, TextInput,
   TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -26,11 +35,20 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PANEL_HEIGHT = SCREEN_HEIGHT * 0.52;
 
 export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: PhoneLinkSheetProps) {
-  const { linkESBAccount } = useAuth();
+  const { linkESBAccount, setApplePhoneLocal } = useAuth();
   const [status, setStatus] = useState<'input' | 'verifying' | 'success' | 'error'>('input');
   const [errorMsg, setErrorMsg] = useState('');
   const [phone, setPhone] = useState('');
+  // Detect WhatsApp availability once on mount. If absent, Mode B is used.
+  // Default to null while detecting so we don't flash Mode A briefly.
+  const [hasWhatsApp, setHasWhatsApp] = useState<boolean | null>(null);
   const abortRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    Linking.canOpenURL('whatsapp://send')
+      .then(setHasWhatsApp)
+      .catch(() => setHasWhatsApp(false));
+  }, []);
 
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const panelTranslateY = useRef(new Animated.Value(PANEL_HEIGHT)).current;
@@ -110,6 +128,31 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
     }
   };
 
+  // Mode B — save phone locally without OTP (WhatsApp not installed).
+  const handleContinueWithoutWhatsApp = async () => {
+    const cleaned = phone.replace(/\D/g, '').replace(/^0+/, '');
+    if (cleaned.length < 8) {
+      setErrorMsg('Nomor telepon tidak valid');
+      return;
+    }
+
+    setErrorMsg('');
+    try {
+      await setApplePhoneLocal(`+62${cleaned}`);
+      setStatus('success');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setTimeout(() => {
+        animateOut(() => {
+          onLinked();
+        });
+      }, 600);
+    } catch (err: any) {
+      setStatus('error');
+      setErrorMsg(err?.message || 'Gagal menyimpan nomor. Coba lagi.');
+      Sentry.captureException(err, { tags: { context: 'phone_link_local' } });
+    }
+  };
+
   if (!visible) return null;
 
   return (
@@ -133,15 +176,26 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
               <View style={styles.successCircle}>
                 <Ionicons name="checkmark" size={36} color="#fff" />
               </View>
-              <Text style={styles.successTitle}>Berhasil Terhubung!</Text>
+              <Text style={styles.successTitle}>
+                {hasWhatsApp ? 'Berhasil Terhubung!' : 'Nomor Tersimpan'}
+              </Text>
               <Text style={styles.successSubtitle}>Melanjutkan ke pembayaran...</Text>
+            </View>
+          ) : hasWhatsApp === null ? (
+            // Brief loading while detecting WhatsApp availability
+            <View style={styles.centeredContent}>
+              <ActivityIndicator color={Colors.green} size="small" />
             </View>
           ) : (
             <>
               {/* Title */}
-              <Text style={styles.title}>Hubungkan Nomor Telepon</Text>
+              <Text style={styles.title}>
+                {hasWhatsApp ? 'Hubungkan Nomor Telepon' : 'Nomor Telepon'}
+              </Text>
               <Text style={styles.subtitle}>
-                Untuk melanjutkan pesanan, verifikasi nomor telepon kamu via WhatsApp
+                {hasWhatsApp
+                  ? 'Untuk melanjutkan pesanan, verifikasi nomor telepon kamu via WhatsApp'
+                  : 'Masukkan nomor telepon untuk konfirmasi pesanan'}
               </Text>
 
               {/* Phone input */}
@@ -166,10 +220,16 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
                 <Text style={styles.errorText}>{errorMsg}</Text>
               ) : null}
 
-              {/* Verify button */}
+              {/* Primary button — Mode A (WhatsApp verify) or Mode B (save & continue) */}
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={status === 'error' ? () => setStatus('input') : handleVerify}
+                onPress={
+                  status === 'error'
+                    ? () => setStatus('input')
+                    : hasWhatsApp
+                      ? handleVerify
+                      : handleContinueWithoutWhatsApp
+                }
                 disabled={status === 'verifying'}
                 style={{ width: '100%' }}
               >
@@ -187,11 +247,13 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
                       <Ionicons name="refresh" size={18} color="#fff" style={{ marginRight: 8 }} />
                       <Text style={styles.verifyBtnText}>Coba Lagi</Text>
                     </>
-                  ) : (
+                  ) : hasWhatsApp ? (
                     <>
                       <Ionicons name="logo-whatsapp" size={20} color="#fff" style={{ marginRight: 8 }} />
                       <Text style={styles.verifyBtnText}>Verifikasi via WhatsApp</Text>
                     </>
+                  ) : (
+                    <Text style={styles.verifyBtnText}>Lanjutkan</Text>
                   )}
                 </LinearGradient>
               </TouchableOpacity>

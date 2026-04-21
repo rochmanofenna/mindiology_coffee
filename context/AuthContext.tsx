@@ -42,6 +42,14 @@ interface AuthState {
   login: (phone: string, authkey: string, branch: string, verifiedName?: string) => Promise<void>;
   loginWithApple: () => Promise<void>;
   linkESBAccount: (phone: string, authkey: string, branch: string) => Promise<void>;
+  /**
+   * Set a phone number on the current user WITHOUT running the WhatsApp OTP
+   * flow. Used for Apple Sign In users on devices without WhatsApp so they can
+   * still provide a contact number at checkout. Leaves esbLinked=false and
+   * authkey='' — the order endpoint only needs ESB_STATIC_TOKEN (company auth),
+   * not a per-user authkey (see server/index.ts:87 esb() helper).
+   */
+  setApplePhoneLocal: (phone: string) => Promise<void>;
   logout: () => Promise<void>;
   setGuest: () => Promise<void>;
   updateName: (name: string) => Promise<void>;
@@ -355,6 +363,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await persistUser(updated);
   }, [user]);
 
+  // ─── Set phone number locally (Apple users without WhatsApp) ───
+  const setApplePhoneLocal = useCallback(async (phone: string) => {
+    if (!user) return;
+    const updated = { ...user, phone };
+    setUser(updated);
+    await persistUser(updated);
+  }, [user]);
+
   // ─── Guest mode ───
   const setGuestMode = useCallback(async () => {
     await storageSet(GUEST_KEY, 'true');
@@ -365,7 +381,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user, isLoading, isGuest,
-        login, loginWithApple, linkESBAccount,
+        login, loginWithApple, linkESBAccount, setApplePhoneLocal,
         logout, setGuest: setGuestMode, updateName, deleteAccount,
       }}
     >
