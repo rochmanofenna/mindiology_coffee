@@ -92,14 +92,6 @@ export default function WelcomeScreen() {
 
         <Text style={styles.brandName}>Mindiology</Text>
 
-        <Text style={styles.taglineUpper}>SOULFOOD NUSANTARA</Text>
-
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <View style={styles.dividerDot} />
-          <View style={styles.dividerLine} />
-        </View>
-
         <Text style={styles.tagline}>Order your favorite food & drinks</Text>
       </View>
 
@@ -193,36 +185,12 @@ const styles = StyleSheet.create({
     color: Colors.greenForest,
     letterSpacing: -1,
   },
-  taglineUpper: {
-    fontFamily: Font.semibold,
-    fontSize: 11,
-    letterSpacing: 4,
-    color: Colors.gold,
-    marginTop: 6,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 16,
-    marginBottom: 12,
-  },
-  dividerLine: {
-    width: 24,
-    height: 1,
-    backgroundColor: Colors.goldLight,
-  },
-  dividerDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: Colors.gold,
-  },
   tagline: {
     fontFamily: Font.regular,
     fontSize: 15,
     color: Colors.textSoft,
     letterSpacing: 0.3,
+    marginTop: 18,
   },
 
   // ─── Center icon ───
