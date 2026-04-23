@@ -1,28 +1,21 @@
-// components/PhoneLinkSheet.tsx — Bottom sheet for linking phone number at checkout
-// Shown to Apple Sign In users who haven't linked an ESB account yet.
+// components/PhoneLinkSheet.tsx — Bottom sheet for linking phone number at checkout.
+// Shown to Apple Sign In users who haven't provided a phone number yet.
 //
-// Two modes:
-//   A. hasWhatsApp=true  → Full WhatsApp OTP flow, links ESB account with authkey.
-//   B. hasWhatsApp=false → Phone input only (no OTP, no external app). Apple
-//      Guideline 4.2.3(i): we cannot require users to install WhatsApp. Mode B
-//      saves the phone to user state locally and lets checkout proceed with
-//      ESB_STATIC_TOKEN (company auth) — no per-user authkey is needed for
-//      /qsv1/order (see server/index.ts:87).
+// Phone input only — saves the phone to user state locally and lets checkout
+// proceed with ESB_STATIC_TOKEN (company auth). No per-user authkey is required
+// for /qsv1/order (see server/index.ts:87). External-app flows have been removed
+// for this build per Apple Guideline 4.2.3(i).
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Animated, Dimensions, Modal, Pressable, View, Text, TextInput,
   TouchableOpacity, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
-  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as WebBrowser from 'expo-web-browser';
 import * as Sentry from '@sentry/react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Font, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { sendWhatsAppOTP } from '@/services/api';
-import { pollVerification } from '@/utils/otpPolling';
 
 interface PhoneLinkSheetProps {
   visible: boolean;
@@ -34,21 +27,11 @@ interface PhoneLinkSheetProps {
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PANEL_HEIGHT = SCREEN_HEIGHT * 0.52;
 
-export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: PhoneLinkSheetProps) {
-  const { linkESBAccount, setApplePhoneLocal } = useAuth();
-  const [status, setStatus] = useState<'input' | 'verifying' | 'success' | 'error'>('input');
+export function PhoneLinkSheet({ visible, onClose, onLinked }: PhoneLinkSheetProps) {
+  const { setApplePhoneLocal } = useAuth();
+  const [status, setStatus] = useState<'input' | 'saving' | 'success' | 'error'>('input');
   const [errorMsg, setErrorMsg] = useState('');
   const [phone, setPhone] = useState('');
-  // Detect WhatsApp availability once on mount. If absent, Mode B is used.
-  // Default to null while detecting so we don't flash Mode A briefly.
-  const [hasWhatsApp, setHasWhatsApp] = useState<boolean | null>(null);
-  const abortRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    Linking.canOpenURL('whatsapp://send')
-      .then(setHasWhatsApp)
-      .catch(() => setHasWhatsApp(false));
-  }, []);
 
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const panelTranslateY = useRef(new Animated.Value(PANEL_HEIGHT)).current;
@@ -73,69 +56,17 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
   };
 
   const handleClose = () => {
-    abortRef.current?.();
     animateOut(onClose);
   };
 
-  const handleVerify = async () => {
+  const handleContinue = async () => {
     const cleaned = phone.replace(/\D/g, '').replace(/^0+/, '');
     if (cleaned.length < 8) {
       setErrorMsg('Nomor telepon tidak valid');
       return;
     }
 
-    setStatus('verifying');
-    setErrorMsg('');
-
-    try {
-      // 1. Send OTP
-      const result = await sendWhatsAppOTP(branchCode);
-      const { otp, otpMessageUrl } = result.data;
-
-      // 2. Open WhatsApp in-app (SafariViewController)
-      try {
-        await WebBrowser.openAuthSessionAsync(otpMessageUrl, 'kamarasan://auth/callback');
-      } catch { /* user dismissed — polling may still catch VERIFIED */ }
-
-      // 3. Poll for verification
-      const { promise, abort } = pollVerification(otp);
-      abortRef.current = abort;
-      const verification = await promise;
-
-      if (verification.status === 'VERIFIED') {
-        // 4. Link the ESB account
-        await linkESBAccount(verification.phone!, verification.authkey!, branchCode);
-        setStatus('success');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-
-        // Brief success feedback then proceed to checkout
-        setTimeout(() => {
-          animateOut(() => {
-            onLinked();
-          });
-        }, 800);
-      } else if (verification.status === 'EXPIRED') {
-        setStatus('error');
-        setErrorMsg('Kode OTP sudah kadaluarsa. Silakan coba lagi.');
-      } else {
-        setStatus('error');
-        setErrorMsg('Waktu verifikasi habis. Silakan coba lagi.');
-      }
-    } catch (err: any) {
-      setStatus('error');
-      setErrorMsg(err?.message || 'Terjadi kesalahan. Silakan coba lagi.');
-      Sentry.captureException(err, { tags: { context: 'phone_link' } });
-    }
-  };
-
-  // Mode B — save phone locally without OTP (WhatsApp not installed).
-  const handleContinueWithoutWhatsApp = async () => {
-    const cleaned = phone.replace(/\D/g, '').replace(/^0+/, '');
-    if (cleaned.length < 8) {
-      setErrorMsg('Nomor telepon tidak valid');
-      return;
-    }
-
+    setStatus('saving');
     setErrorMsg('');
     try {
       await setApplePhoneLocal(`+62${cleaned}`);
@@ -166,7 +97,7 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
           <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
         </Animated.View>
 
-        {/* Panel — flex child so KAV pushes it above the keyboard */}
+        {/* Panel */}
         <Animated.View style={[styles.panel, { transform: [{ translateY: panelTranslateY }] }]}>
           {/* Handle bar */}
           <View style={styles.handleBar} />
@@ -176,26 +107,14 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
               <View style={styles.successCircle}>
                 <Ionicons name="checkmark" size={36} color="#fff" />
               </View>
-              <Text style={styles.successTitle}>
-                {hasWhatsApp ? 'Berhasil Terhubung!' : 'Nomor Tersimpan'}
-              </Text>
+              <Text style={styles.successTitle}>Nomor Tersimpan</Text>
               <Text style={styles.successSubtitle}>Melanjutkan ke pembayaran...</Text>
-            </View>
-          ) : hasWhatsApp === null ? (
-            // Brief loading while detecting WhatsApp availability
-            <View style={styles.centeredContent}>
-              <ActivityIndicator color={Colors.green} size="small" />
             </View>
           ) : (
             <>
-              {/* Title */}
-              <Text style={styles.title}>
-                {hasWhatsApp ? 'Hubungkan Nomor Telepon' : 'Nomor Telepon'}
-              </Text>
+              <Text style={styles.title}>Nomor Telepon</Text>
               <Text style={styles.subtitle}>
-                {hasWhatsApp
-                  ? 'Untuk melanjutkan pesanan, verifikasi nomor telepon kamu via WhatsApp'
-                  : 'Masukkan nomor telepon untuk konfirmasi pesanan'}
+                Masukkan nomor telepon untuk konfirmasi pesanan
               </Text>
 
               {/* Phone input */}
@@ -216,41 +135,28 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
               </View>
 
               {/* Error message */}
-              {errorMsg ? (
-                <Text style={styles.errorText}>{errorMsg}</Text>
-              ) : null}
+              {errorMsg ? <Text style={styles.errorText}>{errorMsg}</Text> : null}
 
-              {/* Primary button — Mode A (WhatsApp verify) or Mode B (save & continue) */}
+              {/* Primary button */}
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={
-                  status === 'error'
-                    ? () => setStatus('input')
-                    : hasWhatsApp
-                      ? handleVerify
-                      : handleContinueWithoutWhatsApp
-                }
-                disabled={status === 'verifying'}
+                onPress={status === 'error' ? () => setStatus('input') : handleContinue}
+                disabled={status === 'saving'}
                 style={{ width: '100%' }}
               >
                 <LinearGradient
-                  colors={status === 'verifying' ? ['#9CA3AF', '#9CA3AF'] : [Colors.green, Colors.greenDeep]}
+                  colors={status === 'saving' ? ['#9CA3AF', '#9CA3AF'] : [Colors.green, Colors.greenDeep]}
                   style={styles.verifyBtn}
                 >
-                  {status === 'verifying' ? (
+                  {status === 'saving' ? (
                     <>
                       <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
-                      <Text style={styles.verifyBtnText}>Memverifikasi...</Text>
+                      <Text style={styles.verifyBtnText}>Menyimpan...</Text>
                     </>
                   ) : status === 'error' ? (
                     <>
                       <Ionicons name="refresh" size={18} color="#fff" style={{ marginRight: 8 }} />
                       <Text style={styles.verifyBtnText}>Coba Lagi</Text>
-                    </>
-                  ) : hasWhatsApp ? (
-                    <>
-                      <Ionicons name="logo-whatsapp" size={20} color="#fff" style={{ marginRight: 8 }} />
-                      <Text style={styles.verifyBtnText}>Verifikasi via WhatsApp</Text>
                     </>
                   ) : (
                     <Text style={styles.verifyBtnText}>Lanjutkan</Text>
@@ -258,7 +164,7 @@ export function PhoneLinkSheet({ visible, onClose, onLinked, branchCode }: Phone
                 </LinearGradient>
               </TouchableOpacity>
 
-              {/* Skip hint */}
+              {/* Skip */}
               <TouchableOpacity onPress={handleClose} style={styles.skipBtn}>
                 <Text style={styles.skipText}>Nanti saja</Text>
               </TouchableOpacity>

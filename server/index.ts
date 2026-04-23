@@ -662,6 +662,100 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// ═══════════════════════════════════════
+// PRIVACY POLICY  (public — linked from App Store listing)
+// ═══════════════════════════════════════
+
+const PRIVACY_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mindiology — Privacy Policy</title>
+<style>
+  :root { color-scheme: light; }
+  body { font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         max-width: 720px; margin: 40px auto; padding: 0 24px; color: #222; background: #FDF6EC; }
+  h1 { font-size: 28px; margin-bottom: 4px; color: #1B5E3B; }
+  h2 { font-size: 18px; margin-top: 32px; color: #1B5E3B; }
+  .updated { color: #777; font-size: 13px; margin-bottom: 32px; }
+  a { color: #1B5E3B; }
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>Mindiology Privacy Policy</h1>
+<p class="updated">Last updated: April 23, 2026</p>
+
+<p>This Privacy Policy explains how Mindiology ("we", "our", "the app") handles information
+when you use our iOS application published by Kamarasan.</p>
+
+<h2>1. Information we collect</h2>
+<ul>
+  <li><strong>Apple ID (Sign in with Apple)</strong> — When you choose to sign in, Apple
+      provides us an anonymous user identifier and, at your discretion, your name and a
+      relay or real email address. We do not receive your Apple password.</li>
+  <li><strong>Phone number</strong> — You may optionally enter a phone number at checkout
+      so the restaurant can confirm your order. This is stored only on your device and
+      sent to our point-of-sale provider (ESB) with your order. We do not use it for
+      marketing or share it with third parties.</li>
+  <li><strong>Order data</strong> — Items, quantities, totals, branch, and timestamps
+      needed to fulfil your order.</li>
+  <li><strong>Device push notification token</strong> — Used only to send order status
+      updates, if you grant notification permission.</li>
+  <li><strong>Diagnostic data</strong> — Anonymised crash and performance data via
+      Sentry to keep the app reliable. No personally identifiable information is sent
+      by default.</li>
+</ul>
+
+<h2>2. What we do NOT collect</h2>
+<ul>
+  <li>We do not collect your location.</li>
+  <li>We do not access your contacts, camera, microphone, photos, or calendar.</li>
+  <li>We do not require any third-party messaging application.</li>
+  <li>We do not sell or rent any data to third parties.</li>
+</ul>
+
+<h2>3. How we use your information</h2>
+<p>Only to: (a) authenticate you via Sign in with Apple, (b) place and fulfil your
+order through our point-of-sale provider (ESB), (c) send you order status
+notifications if enabled, and (d) improve the reliability of the app.</p>
+
+<h2>4. Data retention</h2>
+<p>Order records are retained by our point-of-sale provider (ESB) for as long as
+required by Indonesian tax and consumer protection law. On-device data (cart,
+cached user profile, phone number) is removed when you delete the app, log out,
+or tap <em>Hapus Akun</em> (Delete Account) in the Profile screen.</p>
+
+<h2>5. Account deletion</h2>
+<p>You can delete your account at any time from inside the app: Profile →
+<em>Hapus Akun</em>. This removes all locally cached data and revokes your
+session. For deletion of order history from our backend, email us at
+<a href="mailto:hello@kamarasan.app">hello@kamarasan.app</a>.</p>
+
+<h2>6. Children</h2>
+<p>Mindiology is not directed to children under 13 and we do not knowingly
+collect data from children.</p>
+
+<h2>7. Contact</h2>
+<p>Questions, data access requests, or deletion requests:
+<a href="mailto:hello@kamarasan.app">hello@kamarasan.app</a>.</p>
+
+<h2>8. Changes</h2>
+<p>If we change this policy, we will update the date above and, for material
+changes, notify you inside the app before the change takes effect.</p>
+</body>
+</html>`;
+
+app.get('/privacy', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.type('html').send(PRIVACY_HTML);
+});
+
+// Convenience redirect if someone hits the root of the middleware domain.
+app.get('/', (_req, res) => res.redirect(302, '/privacy'));
+
 // Verification endpoint — only available in non-production for testing Sentry wiring.
 // Hit GET /api/debug-sentry to confirm error reporting reaches the dashboard.
 if (process.env.ESB_ENV !== 'production') {

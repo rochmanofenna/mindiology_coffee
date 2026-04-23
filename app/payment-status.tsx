@@ -371,20 +371,12 @@ export default function PaymentStatusScreen() {
   }
 
   if (mode === 'paid_but_not_pushed') {
-    // Prefer a branch-specific WhatsApp number. Priority: ESB settings (only
-    // available when the viewer is on the same branch) → STORES lookup →
-    // mailto fallback so the customer always has *some* recovery channel.
-    const currentBranchPhone =
-      branch?.branchCode === branchCode ? branch?.phone?.replace(/[^\d]/g, '') || '' : '';
-    const branchPhone = currentBranchPhone || getBranchPhoneDigits(branchCode);
     const branchLabel =
       (branch?.branchCode === branchCode ? branch?.branchName : null) || 'kasir';
-    const waMessage = encodeURIComponent(
+    const supportMessage = encodeURIComponent(
       `Halo, pembayaran untuk pesanan #${orderID}${displayAmount ? ` (${displayAmount})` : ''} sudah berhasil, tetapi pesanan belum masuk ke kitchen. Mohon dibantu push manual dari ESB Order Dashboard.`,
     );
-    const contactUrl = branchPhone
-      ? `https://wa.me/${branchPhone}?text=${waMessage}`
-      : `mailto:hello@kamarasan.app?subject=${encodeURIComponent(`Konfirmasi pesanan ${orderID}`)}&body=${waMessage}`;
+    const contactUrl = `mailto:hello@kamarasan.app?subject=${encodeURIComponent(`Konfirmasi pesanan ${orderID}`)}&body=${supportMessage}`;
 
     return (
       <View style={[s.container, padStyle]}>
@@ -411,15 +403,8 @@ export default function PaymentStatusScreen() {
           style={{ width: '100%', marginTop: 24 }}
         >
           <LinearGradient colors={[Colors.green, Colors.greenDeep]} style={s.primaryBtn}>
-            <Ionicons
-              name={branchPhone ? 'logo-whatsapp' : 'mail-outline'}
-              size={20}
-              color="#fff"
-              style={{ marginRight: 8 }}
-            />
-            <Text style={s.primaryBtnText}>
-              {branchPhone ? `Hubungi ${branchLabel}` : 'Email Dukungan'}
-            </Text>
+            <Ionicons name="mail-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={s.primaryBtnText}>Email Dukungan</Text>
           </LinearGradient>
         </TouchableOpacity>
 

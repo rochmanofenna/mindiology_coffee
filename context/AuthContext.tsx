@@ -1,5 +1,5 @@
 // context/AuthContext.tsx — Authentication state manager
-// Supports: WhatsApp OTP, Sign in with Apple, Guest mode
+// Supports: Sign in with Apple, Guest mode.
 // Apple users can browse without ESB link; phone linking happens at checkout.
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
@@ -19,7 +19,8 @@ import {
   CART_KEY,
 } from '@/utils/cache';
 
-export type LoginMethod = 'whatsapp' | 'apple' | 'guest';
+// 'legacy' preserves compatibility with users cached under the prior auth scheme.
+export type LoginMethod = 'legacy' | 'apple' | 'guest';
 
 export interface User {
   phone: string;
@@ -43,11 +44,11 @@ interface AuthState {
   loginWithApple: () => Promise<void>;
   linkESBAccount: (phone: string, authkey: string, branch: string) => Promise<void>;
   /**
-   * Set a phone number on the current user WITHOUT running the WhatsApp OTP
-   * flow. Used for Apple Sign In users on devices without WhatsApp so they can
-   * still provide a contact number at checkout. Leaves esbLinked=false and
-   * authkey='' — the order endpoint only needs ESB_STATIC_TOKEN (company auth),
-   * not a per-user authkey (see server/index.ts:87 esb() helper).
+   * Set a phone number on the current user locally, without contacting ESB.
+   * Used for Apple Sign In users to provide a contact number at checkout.
+   * Leaves esbLinked=false and authkey='' — the order endpoint only needs
+   * ESB_STATIC_TOKEN (company auth), not a per-user authkey
+   * (see server/index.ts:87 esb() helper).
    */
   setApplePhoneLocal: (phone: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -117,14 +118,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (cachedUser) {
           // Backward compat: users cached before auth overhaul won't have these fields
-          const loginMethod = cachedUser.loginMethod || (cachedUser.appleUserID ? 'apple' : 'whatsapp');
+          const loginMethod: LoginMethod = cachedUser.loginMethod || (cachedUser.appleUserID ? 'apple' : 'legacy');
           const esbLinked = cachedUser.esbLinked ?? (!!token && !!cachedUser.phone);
 
           if (loginMethod === 'apple' && !esbLinked) {
             // Apple user without ESB link — restore without authkey
             setUser({ ...cachedUser, loginMethod, esbLinked, authkey: '' });
           } else if (token) {
-            // WhatsApp user or linked Apple user — restore with authkey
+            // Legacy phone-linked user or linked Apple user — restore with authkey
             setUser({ ...cachedUser, loginMethod, esbLinked: true, authkey: token });
           }
           // If no token and not an unlinked Apple user, fall through to guest/welcome
@@ -141,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  // ─── WhatsApp OTP login ───
+  // ─── Phone-based login (legacy; kept for linkESBAccount() to reuse) ───
   const login = useCallback(async (phone: string, authkey: string, branch: string, verifiedName?: string) => {
     const member = await resolveMember(branch, phone);
 
@@ -150,11 +151,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authkey,
       name: member.fullName || verifiedName || phone,
       memberCode: member.memberCode || '',
-      // Points/tier require ESB validate-login (password auth) which WhatsApp OTP
+      // Points/tier require ESB validate-login (password auth) which this flow
       // doesn't support. They'll stay at defaults until we add a richer member endpoint.
       points: 0,
       tier: 'Perunggu',
-      loginMethod: 'whatsapp',
+      loginMethod: 'legacy',
       esbLinked: true,
     };
 
@@ -363,7 +364,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await persistUser(updated);
   }, [user]);
 
-  // ─── Set phone number locally (Apple users without WhatsApp) ───
+  // ─── Set phone number locally for Apple users (no external verification) ───
   const setApplePhoneLocal = useCallback(async (phone: string) => {
     if (!user) return;
     const updated = { ...user, phone };

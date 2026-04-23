@@ -10,10 +10,9 @@ export interface StoreInfo {
   branchCode: string;
   supportsDineIn: boolean;
   /**
-   * WhatsApp-enabled phone number for the branch cashier/manager, used as the
-   * contact target when a payment settles but the POS hasn't received the order
-   * (paid_but_not_pushed recovery state). Leave empty to fall back to mailto.
-   * TODO(ryan): fill these in from family once confirmed.
+   * Branch cashier/manager phone number. Currently unused by the client;
+   * reserved for future support integrations. Leave empty — recovery flows
+   * use mailto support only.
    */
   phone?: string;
 }
@@ -29,7 +28,7 @@ export const STORES: StoreInfo[] = [
     lng: 106.7083972,
     branchCode: 'MCE',
     supportsDineIn: true,
-    phone: '', // TODO(ryan): MCE WhatsApp number
+    phone: '',
   },
   {
     id: 'danareksa',
@@ -41,7 +40,7 @@ export const STORES: StoreInfo[] = [
     lng: 106.830187,
     branchCode: 'MCEDR',
     supportsDineIn: true,
-    phone: '', // TODO(ryan): MCEDR WhatsApp number
+    phone: '',
   },
   {
     id: 'sandwicherie',
@@ -53,7 +52,7 @@ export const STORES: StoreInfo[] = [
     lng: 106.6972068,
     branchCode: 'SLE',
     supportsDineIn: true,
-    phone: '', // TODO(ryan): SLE WhatsApp number
+    phone: '',
   },
   {
     id: 'citragarden',
@@ -65,11 +64,11 @@ export const STORES: StoreInfo[] = [
     lng: 106.6938151,
     branchCode: 'KCG',
     supportsDineIn: false,
-    phone: '', // TODO(ryan): KCG WhatsApp number
+    phone: '',
   },
 ];
 
-/** Normalize a phone string for wa.me (strip non-digits). Empty string if none. */
+/** Normalize a phone string to digits only. Empty string if none. */
 export function getBranchPhoneDigits(branchCode: string, fallback?: string): string {
   const explicit = STORES.find(s => s.branchCode === branchCode)?.phone;
   return (explicit || fallback || '').replace(/[^\d]/g, '');

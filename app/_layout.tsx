@@ -17,12 +17,8 @@ import { OrderProvider } from '@/context/OrderContext';
 import { Colors } from '@/constants/theme';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import AnimatedSplash from '@/components/AnimatedSplash';
-import * as WebBrowser from 'expo-web-browser';
 import { registerForPushNotifications } from '@/utils/notifications';
 import { registerPushToken } from '@/services/api';
-
-// Warm up the in-app browser for faster WhatsApp OTP flow
-WebBrowser.warmUpAsync().catch(() => {});
 
 // ─── Sentry: error tracking + performance monitoring ───
 // DSN is a public identifier (not a secret); env var keeps config out of source.
@@ -88,8 +84,6 @@ function AppNavigator() {
       >
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="auth/welcome" options={{ animation: 'fade' }} />
-        <Stack.Screen name="auth/phone" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="auth/verify" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen
           name="item/[id]"
           options={{
@@ -146,7 +140,6 @@ function AppNavigator() {
             animation: 'slide_from_right',
           }}
         />
-        <Stack.Screen name="auth/callback" options={{ animation: 'fade' }} />
         <Stack.Screen name="order/callback" options={{ animation: 'fade' }} />
         <Stack.Screen name="payment-status" options={{ animation: 'slide_from_bottom', gestureEnabled: false }} />
         <Stack.Screen name="saved-locations" options={{ animation: 'slide_from_right' }} />

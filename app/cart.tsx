@@ -453,18 +453,17 @@ export default function CartScreen() {
     }
 
     // Apple user without ESB link — ask for a phone number first.
-    // PhoneLinkSheet picks Mode A (WhatsApp OTP → full ESB link) or Mode B
-    // (plain phone input, no OTP) based on whether WhatsApp is installed.
-    // Once user.phone is set (either path), checkout proceeds — ESB accepts
-    // orders with empty userToken in the body (auth comes from ESB_STATIC_TOKEN
-    // in the middleware; see server/index.ts:87).
+    // PhoneLinkSheet collects the phone locally (no external app). Once
+    // user.phone is set, checkout proceeds — ESB accepts orders with empty
+    // userToken in the body (auth comes from ESB_STATIC_TOKEN in the
+    // middleware; see server/index.ts:87).
     if (user.loginMethod === 'apple' && !user.esbLinked && !user.phone) {
       checkoutLockRef.current = false;
       setShowPhoneLinkSheet(true);
       return;
     }
 
-    // WhatsApp-linked users need a valid authkey; Apple users without ESB link
+    // Phone-linked users need a valid authkey; Apple users without ESB link
     // can proceed with empty authkey (company token covers auth at the order endpoint).
     if (!user.authkey && user.loginMethod !== 'apple') {
       checkoutLockRef.current = false;

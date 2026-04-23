@@ -36,7 +36,7 @@ export default function JobDetailScreen() {
           <Ionicons name="checkmark" size={36} color="#fff" />
         </View>
         <Text style={styles.successTitle}>Lamaran Terkirim!</Text>
-        <Text style={styles.successDesc}>Terima kasih sudah melamar posisi {job.title}. Tim HR kami akan menghubungi Anda melalui WhatsApp atau telepon dalam 3-5 hari kerja.</Text>
+        <Text style={styles.successDesc}>Terima kasih sudah melamar posisi {job.title}. Tim HR kami akan menghubungi Anda melalui telepon dalam 3-5 hari kerja.</Text>
         <TouchableOpacity style={styles.successBtn} onPress={() => router.push('/')}>
           <Text style={styles.successBtnText}>Kembali ke Beranda</Text>
         </TouchableOpacity>

@@ -20,9 +20,7 @@
       "bundleIdentifier": "com.kamarasan.app",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "LSApplicationQueriesSchemes": ["whatsapp"],
-        "NSLocationWhenInUseUsageDescription": "Untuk menghitung jangkauan dan ongkos pengantaran."
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -41,7 +39,6 @@
       "expo-font",
       "expo-asset",
       "expo-brightness",
-      "expo-document-picker",
       "expo-notifications",
       "expo-apple-authentication"
     ],

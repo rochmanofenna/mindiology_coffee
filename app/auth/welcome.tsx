@@ -1,48 +1,33 @@
 // app/auth/welcome.tsx — Welcome Screen
-// Three login paths: Sign in with Apple (primary), WhatsApp (secondary), Guest (text link)
-// Apple Guideline 4.8: Apple Sign In offered as first-class option
+// Two login paths: Sign in with Apple (primary), Guest (text link).
+// Apple Guideline 4.8: Apple Sign In offered as first-class option.
 import { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Dimensions,
-  ActivityIndicator, Alert, Platform, Image, Linking,
+  ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Haptics from 'expo-haptics';
-import { Colors, Font, Spacing, Radius } from '@/constants/theme';
+import { Colors, Font, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { sendWhatsAppOTP } from '@/services/api';
-import { useBranch } from '@/context/BranchContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BTN_WIDTH = SCREEN_WIDTH - Spacing.xxl * 2;
 
-// Shared OTP state between welcome and phone screens (avoids URL param exposure)
-let pendingOtp: { otp: string; url: string } | null = null;
-export function setPendingOtp(data: { otp: string; url: string }) { pendingOtp = data; }
-export function getPendingOtp() { return pendingOtp; }
-export function clearPendingOtp() { pendingOtp = null; }
-
 export default function WelcomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { setGuest, loginWithApple } = useAuth();
-  const { currentBranchCode } = useBranch();
-  const [loadingWa, setLoadingWa] = useState(false);
   const [loadingApple, setLoadingApple] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
-  // Apple Guideline 4.2.3(i): only surface the WhatsApp option if WhatsApp is
-  // actually installed — never ask the user to install an external app.
-  // Requires "whatsapp" in LSApplicationQueriesSchemes (see app.json).
-  const [hasWhatsApp, setHasWhatsApp] = useState(false);
 
   useEffect(() => {
     if (Platform.OS === 'ios') {
       AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => {});
     }
-    Linking.canOpenURL('whatsapp://send').then(setHasWhatsApp).catch(() => setHasWhatsApp(false));
   }, []);
 
   const handleAppleSignIn = async () => {
@@ -60,38 +45,18 @@ export default function WelcomeScreen() {
     }
   };
 
-  const handleWhatsApp = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setLoadingWa(true);
-    try {
-      const result = await sendWhatsAppOTP(currentBranchCode);
-      const { otp, otpMessageUrl } = result.data;
-      setPendingOtp({ otp, url: otpMessageUrl });
-      router.push('/auth/phone');
-    } catch (err: any) {
-      Alert.alert('Failed', err?.message || 'Unable to reach the server. Please try again.');
-    } finally {
-      setLoadingWa(false);
-    }
-  };
-
   const handleGuest = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     await setGuest();
     router.replace('/');
   };
 
-  const loading = loadingWa || loadingApple;
-
   return (
     <View style={styles.container}>
       {/* ─── Top: Brand identity ─── */}
       <View style={[styles.brandSection, { paddingTop: insets.top + 40 }]}>
-        {/* Decorative line */}
         <View style={styles.decorLine} />
-
         <Text style={styles.brandName}>Mindiology</Text>
-
         <Text style={styles.tagline}>Order your favorite food & drinks</Text>
       </View>
 
@@ -126,31 +91,8 @@ export default function WelcomeScreen() {
           </View>
         )}
 
-        {/* Sign in with WhatsApp — SECONDARY (outline style) */}
-        {/* Hidden entirely when WhatsApp is not installed (Apple Guideline 4.2.3(i)). */}
-        {hasWhatsApp && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={handleWhatsApp}
-            disabled={loading}
-            style={styles.waBtn}
-          >
-            {loadingWa ? (
-              <>
-                <ActivityIndicator color={Colors.green} size="small" style={{ marginRight: 8 }} />
-                <Text style={styles.waBtnText}>Connecting...</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="logo-whatsapp" size={20} color={Colors.green} style={{ marginRight: 8 }} />
-                <Text style={styles.waBtnText}>Sign in with WhatsApp</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
-
         {/* Guest mode — text link */}
-        <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} activeOpacity={0.6} disabled={loading}>
+        <TouchableOpacity style={styles.guestBtn} onPress={handleGuest} activeOpacity={0.6} disabled={loadingApple}>
           <Text style={styles.guestText}>Continue as Guest</Text>
           <Ionicons name="arrow-forward" size={14} color={Colors.textSoft} style={{ marginLeft: 4 }} />
         </TouchableOpacity>
@@ -251,25 +193,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     marginLeft: 8,
-  },
-
-  // WhatsApp button (secondary — outline)
-  waBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: BTN_WIDTH,
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: Colors.green,
-    backgroundColor: 'transparent',
-    marginBottom: 16,
-  },
-  waBtnText: {
-    fontFamily: Font.semibold,
-    fontSize: 16,
-    color: Colors.green,
   },
 
   // Guest link

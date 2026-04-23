@@ -130,7 +130,6 @@ export interface ESBBranchSettings {
   isTemporaryClosed: boolean;
   orderModes: { type: string; visitPurposeID: string; flagShowESBOrder: boolean }[];
   feature: {
-    whatsappLogin: boolean;
     voucherUsage: boolean;
     pickup: { pickupType: { pickupNow: boolean; pickupLater: boolean } };
   };
@@ -361,12 +360,6 @@ export interface MemberLookupResponse {
 
 export const lookupMember = (branch: string, key: string): Promise<MemberLookupResponse> =>
   api('/api/membership/lookup', { body: { branch, key } });
-
-export const sendWhatsAppOTP = (branch: string): Promise<{ data: { otp: string; otpMessageUrl: string } }> =>
-  api('/api/auth/whatsapp/send-otp', { body: { branch } });
-
-export const verifyOTP = (otp: string) =>
-  api('/api/auth/whatsapp/verify', { body: { otp } });
 
 export const getPromotions = (branch: string, cartItems: any) =>
   api('/api/promotions', { body: { branch, ...cartItems } });

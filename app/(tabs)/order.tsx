@@ -327,21 +327,15 @@ function WaitingPaymentBanner({
 
 function StuckPaymentBanner({ orderId, branchCode }: { orderId: string; branchCode: string }) {
   const { branch } = useBranch();
-  // Prefer live branch settings phone (when the viewer is on the same branch),
-  // fall back to STORES lookup, fall back again to mailto support.
-  const livePhone = branch?.branchCode === branchCode ? branch?.phone : '';
-  const branchPhone = getBranchPhoneDigits(branchCode, livePhone);
   const branchLabel = branch?.branchCode === branchCode ? (branch?.branchName || 'kasir') : 'kasir';
 
   const onContact = useCallback(() => {
     const message = encodeURIComponent(
       `Halo, pembayaran untuk pesanan #${orderId} sudah berhasil, tetapi pesanan belum masuk ke kitchen. Mohon dibantu push manual dari ESB Order Dashboard.`,
     );
-    const url = branchPhone
-      ? `https://wa.me/${branchPhone}?text=${message}`
-      : `mailto:hello@kamarasan.app?subject=${encodeURIComponent(`Konfirmasi pesanan ${orderId}`)}&body=${message}`;
+    const url = `mailto:hello@kamarasan.app?subject=${encodeURIComponent(`Konfirmasi pesanan ${orderId}`)}&body=${message}`;
     Linking.openURL(url).catch(() => {});
-  }, [branchPhone, orderId]);
+  }, [orderId]);
 
   return (
     <View style={styles.stuckBanner}>
@@ -354,9 +348,7 @@ function StuckPaymentBanner({ orderId, branchCode }: { orderId: string; branchCo
           Ada kendala teknis saat pengiriman ke kitchen. Tunjukkan nomor pesanan ke {branchLabel} — mereka bisa memproses langsung dari POS.
         </Text>
         <TouchableOpacity activeOpacity={0.8} style={styles.stuckAction} onPress={onContact}>
-          <Text style={styles.stuckActionText}>
-            {branchPhone ? `Hubungi ${branchLabel}` : 'Email Dukungan'}
-          </Text>
+          <Text style={styles.stuckActionText}>Email Dukungan</Text>
         </TouchableOpacity>
       </View>
     </View>
