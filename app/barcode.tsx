@@ -60,8 +60,11 @@ export default function BarcodeScreen() {
         <View style={styles.guestContainer}>
           <Ionicons name="barcode-outline" size={64} color={Colors.textSoft} />
           <Text style={styles.guestTitle}>{message}</Text>
-          <TouchableOpacity style={styles.guestLoginBtn} onPress={() => router.replace('/auth/welcome' as any)}>
-            <Text style={styles.guestLoginText}>{user ? 'Hubungkan' : 'Login'}</Text>
+          <TouchableOpacity
+            style={styles.guestLoginBtn}
+            onPress={() => router.replace(user ? '/(tabs)/explore' as any : '/auth/welcome' as any)}
+          >
+            <Text style={styles.guestLoginText}>{user ? 'Jelajahi Menu' : 'Login'}</Text>
           </TouchableOpacity>
         </View>
       </View>
