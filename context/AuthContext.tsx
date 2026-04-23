@@ -117,8 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (cachedUser) {
-          // Backward compat: users cached before auth overhaul won't have these fields
-          const loginMethod: LoginMethod = cachedUser.loginMethod || (cachedUser.appleUserID ? 'apple' : 'legacy');
+          // Backward compat: users cached before auth overhaul won't have these fields.
+          // Also normalize any legacy string values (e.g. the retired 'whatsapp' literal)
+          // into the current LoginMethod type so Sentry/analytics never ship a stale tag.
+          const rawMethod = cachedUser.loginMethod as string | undefined;
+          const loginMethod: LoginMethod =
+            rawMethod === 'apple' ? 'apple'
+            : rawMethod === 'guest' ? 'guest'
+            : cachedUser.appleUserID ? 'apple'
+            : 'legacy';
           const esbLinked = cachedUser.esbLinked ?? (!!token && !!cachedUser.phone);
 
           if (loginMethod === 'apple' && !esbLinked) {
